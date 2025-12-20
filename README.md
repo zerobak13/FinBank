@@ -1,4 +1,4 @@
-# FinBank Enterprise (JWT 버전 풀스택 포트폴리오)
+# FinBank
 
 - Backend: Spring Boot 3 + Spring Security + JWT + JPA(H2)
 - Frontend: React + Vite + TailwindCSS
