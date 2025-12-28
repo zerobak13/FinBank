@@ -15,6 +15,16 @@ public class TransferRequest {
     @Min(1)
     private long amount;
 
+    // 1. 기본 생성자
+    public TransferRequest() {}
+
+    // 2. 모든 필드를 받는 생성자 (테스트 코드에서 사용)
+    public TransferRequest(Long fromAccountId, String toAccountNumber, long amount) {
+        this.fromAccountId = fromAccountId;
+        this.toAccountNumber = toAccountNumber;
+        this.amount = amount;
+    }
+
     public Long getFromAccountId() { return fromAccountId; }
     public void setFromAccountId(Long fromAccountId) { this.fromAccountId = fromAccountId; }
 
