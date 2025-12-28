@@ -108,20 +108,23 @@ public class AccountService {
         if (from.getBalance() < request.getAmount()) {
             throw new BusinessException("잔액이 부족합니다.");
         }
-
+        //출금처리
         from.withdraw(request.getAmount());
+        //입금처리
         to.deposit(request.getAmount());
-
+        //변경된 계좌 저장
         accountRepository.save(from);
         accountRepository.save(to);
-
+        //출금 로그 생성
         TransactionLog withdrawLog = TransactionLog.withdraw(from,
                 request.getAmount(), from.getBalance());
+        //입금 로그 생성
         TransactionLog depositLog = TransactionLog.deposit(to,
                 request.getAmount(), to.getBalance());
+        //이체 로그 생성
         TransactionLog transferLog = TransactionLog.transfer(from, to,
                 request.getAmount(), from.getBalance());
-
+        //로그 저장
         transactionLogRepository.save(withdrawLog);
         transactionLogRepository.save(depositLog);
         transactionLogRepository.save(transferLog);
