@@ -4,14 +4,15 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.AccessLevel;
+
 
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "accounts")
 @Getter
-@Setter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Account {
 
     @Id
@@ -30,7 +31,7 @@ public class Account {
 
     @Column(nullable = false)
     private boolean locked = false;
-
+    //db락 아님
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
