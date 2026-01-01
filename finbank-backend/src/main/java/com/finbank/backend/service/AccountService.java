@@ -147,7 +147,7 @@ public class AccountService {
 
         return new TransactionLogResponse(
                 t.getId(),
-                t.getType(),
+                t.getType().name(),
                 fromId,
                 toId,
                 t.getAmount(),

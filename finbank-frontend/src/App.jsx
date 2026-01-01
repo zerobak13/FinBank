@@ -38,12 +38,13 @@ async function api(path, options = {}) {
     try {
       const data = await res.json();
       if (data && data.message) message = data.message;
+      else if (typeof data === "string" && data) message = data;
     } catch {
-      const text = await res.text();
-      if (text) message = text;
+      message = `요청에 실패했습니다. (HTTP ${res.status})`;
     }
     throw new Error(message);
   }
+
 
   if (res.status === 204) return null;
   return res.json();
