@@ -172,6 +172,11 @@ export default function App() {
         setSelected(null);
       }
     } catch (e) {
+      //토큰이 죽었으면 자동 로그아웃 처리
+      if (String(e.message).includes("HTTP 403")) {
+        handleLogout();
+        return;
+      }
       notify(e.message, "error");
     } finally {
       setLoading(false);
