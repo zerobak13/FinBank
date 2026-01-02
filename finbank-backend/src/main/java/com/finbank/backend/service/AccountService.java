@@ -175,19 +175,19 @@ public class AccountService {
 
     // ===== Ledger Rule Validation =====
 
-    private void validateWithdrawLedger(Account from) {
+    void validateWithdrawLedger(Account from) {
         if (from == null) {
             throw new BusinessException("WITHDRAW 로그에는 from 계좌가 필요합니다.");
         }
     }
 
-    private void validateDepositLedger(Account to) {
+    void validateDepositLedger(Account to) {
         if (to == null) {
             throw new BusinessException("DEPOSIT 로그에는 to 계좌가 필요합니다.");
         }
     }
 
-    private void validateTransferLedger(Account from, Account to) {
+    void validateTransferLedger(Account from, Account to) {
         if (from == null || to == null) {
             throw new BusinessException("TRANSFER 로그에는 from/to 계좌가 모두 필요합니다.");
         }
