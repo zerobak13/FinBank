@@ -1,0 +1,43 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36" version="29.2.9">
+  <diagram name="페이지-1" id="VpcitKcQX0R0qoeKLAG7">
+    <mxGraphModel dx="609" dy="613" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="blNU67aFrGnQBF9Si8F4-12" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=#232F3E;fillColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.generic_database;" value="Generic&#xa;database" vertex="1">
+          <mxGeometry height="60" width="60" x="370" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="blNU67aFrGnQBF9Si8F4-13" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=#232F3E;fillColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.client;" value="Client" vertex="1">
+          <mxGeometry height="60" width="60" x="260" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="blNU67aFrGnQBF9Si8F4-14" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;strokeColor=#232F3E;fillColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.user;" value="User" vertex="1">
+          <mxGeometry height="60" width="60" x="170" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="blNU67aFrGnQBF9Si8F4-22" edge="1" parent="1" source="blNU67aFrGnQBF9Si8F4-19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="blNU67aFrGnQBF9Si8F4-20">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="blNU67aFrGnQBF9Si8F4-19" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="60" width="120" x="40" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="blNU67aFrGnQBF9Si8F4-23" edge="1" parent="1" source="blNU67aFrGnQBF9Si8F4-20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="blNU67aFrGnQBF9Si8F4-21">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="blNU67aFrGnQBF9Si8F4-20" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="60" width="120" x="230" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="blNU67aFrGnQBF9Si8F4-21" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="60" width="120" x="414" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="blNU67aFrGnQBF9Si8F4-24" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Frontend&lt;br&gt;(React / Vite)" vertex="1">
+          <mxGeometry height="30" width="90" x="50" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="blNU67aFrGnQBF9Si8F4-25" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Backend&lt;br&gt;(Spring Boot)" vertex="1">
+          <mxGeometry height="30" width="80" x="250" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="blNU67aFrGnQBF9Si8F4-28" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Database&lt;br&gt;(MySQL)" vertex="1">
+          <mxGeometry height="30" width="60" x="444" y="300" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
