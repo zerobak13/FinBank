@@ -116,12 +116,15 @@ public class AccountService {
         accountRepository.save(from);
         accountRepository.save(to);
         //출금 로그 생성
+        validateWithdrawLedger(from);
         TransactionLog withdrawLog = TransactionLog.withdraw(from,
                 request.getAmount(), from.getBalance());
         //입금 로그 생성
+        validateDepositLedger(to);
         TransactionLog depositLog = TransactionLog.deposit(to,
                 request.getAmount(), to.getBalance());
         //이체 로그 생성
+        validateTransferLedger(from, to);
         TransactionLog transferLog = TransactionLog.transfer(from, to,
                 request.getAmount(), from.getBalance());
         //로그 저장
@@ -165,4 +168,31 @@ public class AccountService {
         }
         return sb.toString();
     }
+
+
+
+    // ===== Ledger Rule Validation =====
+
+    // ===== Ledger Rule Validation =====
+
+    void validateWithdrawLedger(Account from) {
+        if (from == null) {
+            throw new BusinessException("WITHDRAW 로그에는 from 계좌가 필요합니다.");
+        }
+    }
+
+    void validateDepositLedger(Account to) {
+        if (to == null) {
+            throw new BusinessException("DEPOSIT 로그에는 to 계좌가 필요합니다.");
+        }
+    }
+
+    void validateTransferLedger(Account from, Account to) {
+        if (from == null || to == null) {
+            throw new BusinessException("TRANSFER 로그에는 from/to 계좌가 모두 필요합니다.");
+        }
+    }
+
+
+
 }
