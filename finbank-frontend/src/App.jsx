@@ -33,15 +33,20 @@ async function api(path, options = {}) {
     headers,
   });
 
+  // 실패 응답 처리
   if (!res.ok) {
-    let message = "요청에 실패했습니다.";
+    let message = `요청에 실패했습니다. (HTTP ${res.status})`;
     try {
-      const data = await res.json();
-      if (data && data.message) message = data.message;
-      else if (typeof data === "string" && data) message = data;
-    } catch {
-      message = `요청에 실패했습니다. (HTTP ${res.status})`;
-    }
+      const text = await res.text();           // ✅ 먼저 text로 받기
+      if (text) {
+        try {
+          const data = JSON.parse(text);       // ✅ JSON이면 파싱
+          message = data?.message ?? text;
+        } catch {
+          message = text;                      // ✅ JSON 아니면 그냥 문자열
+        }
+      }
+    } catch {}
     throw new Error(message);
   }
 
