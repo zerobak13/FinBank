@@ -72,6 +72,9 @@ export default function App() {
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState("info");
 
+  const [depositAmount, setDepositAmount] = useState("");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+
   useEffect(() => {
     if (!msg) return;
     const t = setTimeout(() => setMsg(""), 4000);
@@ -227,6 +230,64 @@ export default function App() {
       setLoading(false);
     }
   };
+  const deposit = async () => {
+    if (!selected) {
+      notify("계좌를 선택하세요.", "error");
+      return;
+    }
+
+    const value = Number(depositAmount);
+    if (value <= 0) {
+      notify("입금 금액은 1원 이상이어야 합니다.", "error");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await api(
+          `/api/accounts/${selected.account.id}/deposit?amount=${value}`,
+          { method: "POST" }
+      );
+      notify("입금이 완료되었습니다.", "success");
+      setDepositAmount("");
+      await selectAccount(selected.account.id, false);
+      await loadAccounts();
+    } catch (e) {
+      notify(e.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const withdraw = async () => {
+    if (!selected) {
+      notify("계좌를 선택하세요.", "error");
+      return;
+    }
+
+    const value = Number(withdrawAmount);
+    if (value <= 0) {
+      notify("출금 금액은 1원 이상이어야 합니다.", "error");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await api(
+          `/api/accounts/${selected.account.id}/withdraw?amount=${value}`,
+          { method: "POST" }
+      );
+      notify("출금이 완료되었습니다.", "success");
+      setWithdrawAmount("");
+      await selectAccount(selected.account.id, false);
+      await loadAccounts();
+    } catch (e) {
+      notify(e.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   const transfer = async (e) => {
     e.preventDefault();
@@ -474,6 +535,56 @@ export default function App() {
                       </span>
                     </div>
                   </div>
+
+                  {/* 입금 / 출금 */}
+                  <div className="bg-slate-950 border border-slate-700 rounded-xl p-4 mb-4">
+                    <h3 className="text-sm font-semibold text-slate-300 mb-3">
+                      입금 / 출금
+                    </h3>
+
+                    <div className="grid grid-cols-12 gap-3 items-end">
+                      {/* 입금 */}
+                      <div className="col-span-6">
+                        <label className="block text-xs text-slate-400 mb-1">
+                          입금 금액
+                        </label>
+                        <input
+                            type="number"
+                            value={depositAmount}
+                            onChange={(e) => setDepositAmount(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+                        />
+                        <button
+                            onClick={deposit}
+                            disabled={loading || selected?.account.locked}
+                            className="w-full mt-2 bg-emerald-500 hover:bg-emerald-600 rounded-lg py-2 text-sm font-semibold disabled:opacity-50"
+                        >
+                          입금
+                        </button>
+                      </div>
+
+                      {/* 출금 */}
+                      <div className="col-span-6">
+                        <label className="block text-xs text-slate-400 mb-1">
+                          출금 금액
+                        </label>
+                        <input
+                            type="number"
+                            value={withdrawAmount}
+                            onChange={(e) => setWithdrawAmount(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+                        />
+                        <button
+                            onClick={withdraw}
+                            disabled={loading || selected?.account.locked}
+                            className="w-full mt-2 bg-rose-500 hover:bg-rose-600 rounded-lg py-2 text-sm font-semibold disabled:opacity-50"
+                        >
+                          출금
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
 
                   {/* 이체 폼 */}
                   <form
