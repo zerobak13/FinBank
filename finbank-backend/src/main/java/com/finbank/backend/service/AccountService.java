@@ -13,6 +13,8 @@ import jakarta.transaction.Transactional;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 import java.util.stream.Collectors;
@@ -75,8 +77,18 @@ public class AccountService {
             throw new BusinessException("본인 계좌만 조회할 수 있습니다.");
         }
 
-        List<TransactionLog> logs = transactionLogRepository
-                .findByFromAccountOrToAccountOrderByCreatedAtDesc(account, account);
+        List<TransactionLog> fromLogs =
+                transactionLogRepository.findByFromAccountOrderByCreatedAtDesc(account);
+
+        List<TransactionLog> toLogs =
+                transactionLogRepository.findByToAccountOrderByCreatedAtDesc(account);
+
+        List<TransactionLog> logs = new ArrayList<>();
+        logs.addAll(fromLogs);
+        logs.addAll(toLogs);
+
+        logs.sort(Comparator.comparing(TransactionLog::getCreatedAt).reversed());
+
 
         AccountSummaryResponse summary = toSummary(account);
         List<TransactionLogResponse> txDtos = logs.stream()
@@ -125,12 +137,21 @@ public class AccountService {
                 request.getAmount(), to.getBalance());
         //이체 로그 생성
         validateTransferLedger(from, to);
-        TransactionLog transferLog = TransactionLog.transfer(from, to,
-                request.getAmount(), from.getBalance());
+
+        TransactionLog outLog = TransactionLog.transferOut(
+                from, to, request.getAmount(), from.getBalance()
+        );
+
+        TransactionLog inLog = TransactionLog.transferIn(
+                from, to, request.getAmount(), to.getBalance()
+        );
+
         //로그 저장
         transactionLogRepository.save(withdrawLog);
         transactionLogRepository.save(depositLog);
-        transactionLogRepository.save(transferLog);
+        transactionLogRepository.save(outLog);
+        transactionLogRepository.save(inLog);
+
     }
 
     private AccountSummaryResponse toSummary(Account a) {
@@ -171,7 +192,6 @@ public class AccountService {
 
 
 
-    // ===== Ledger Rule Validation =====
 
     // ===== Ledger Rule Validation =====
 

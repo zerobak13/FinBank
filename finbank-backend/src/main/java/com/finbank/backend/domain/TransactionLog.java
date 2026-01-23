@@ -70,14 +70,27 @@ public class TransactionLog {
         return log;
     }
 
-    public static TransactionLog transfer(Account from, Account to, long amount, long fromBalanceAfter) {
+    public static TransactionLog transferOut(Account from, Account to, long amount, long fromBalanceAfter) {
         TransactionLog log = new TransactionLog();
-        log.type = TransactionType.TRANSFER;
+        log.type = TransactionType.TRANSFER_OUT;
         log.fromAccount = from;
         log.toAccount = to;
         log.amount = amount;
         log.balanceAfter = fromBalanceAfter;
-        log.description = "Transfer";
+        log.description = "Transfer Out";
         return log;
     }
+
+    public static TransactionLog transferIn(Account from, Account to, long amount, long toBalanceAfter) {
+        TransactionLog log = new TransactionLog();
+        log.type = TransactionType.TRANSFER_IN;
+        log.fromAccount = from;
+        log.toAccount = to;
+        log.amount = amount;
+        log.balanceAfter = toBalanceAfter;
+        log.description = "Transfer In";
+        return log;
+    }
+
+
 }

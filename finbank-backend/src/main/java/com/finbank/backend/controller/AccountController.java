@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/accounts")
@@ -36,8 +37,12 @@ public class AccountController {
     }
 
     @PostMapping("/transfer")
-    public ResponseEntity<Void> transfer(@Valid @RequestBody TransferRequest request) {
+    public ResponseEntity<Map<String, String>> transfer(
+            @Valid @RequestBody TransferRequest request) {
         accountService.transfer(request);
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(
+                Map.of("message", "이체 완료")
+        );
     }
+
 }
