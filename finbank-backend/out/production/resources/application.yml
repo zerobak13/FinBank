@@ -1,26 +1,26 @@
 spring:
+  profiles:
+    active: local
   datasource:
+    # URL은 로컬 환경이므로 그대로 두어도 무방하지만, 외부 배포 시에는 이 또한 변수화합니다.
     url: jdbc:mysql://localhost:3306/finbank?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true
-    username: finuser
-    password: finpass1234
+    username: ${DB_USERNAME}  # 변수 처리
+    password: ${DB_PASSWORD}  # 변수 처리
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
+    open-in-view: true
     hibernate:
-      ddl-auto: update   # 개발 단계 — 자동 테이블 생성 //create
+      ddl-auto: update   # 데이터를 유지하기 위해 update로 변경 권장
     show-sql: true
     properties:
       hibernate:
         format_sql: true
-    database-platform: org.hibernate.dialect.MySQL8Dialect
-
-  h2:
-    console:
-      enabled: false   # H2 콘솔 비활성화 (비필수)
-
+    #database-platform: org.hibernate.dialect.MySQLDialect
 server:
   port: 8080
 
 jwt:
-  secret: VerySecretJwtKeyForFinbankDemoProject123456
+  # JWT 시크릿 키도 보안상 매우 중요하므로 변수화합니다.
+  secret: ${JWT_SECRET_KEY}
   expiration-ms: 3600000
