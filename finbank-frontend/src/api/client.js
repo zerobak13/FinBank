@@ -1,3 +1,6 @@
+const API_URL = "https://finbank-backend.onrender.com";
+
+
 export async function client(path, options = {}) {
     const rawAuth = localStorage.getItem("finbankAuth");
     const auth = rawAuth ? JSON.parse(rawAuth) : null;
@@ -10,8 +13,7 @@ export async function client(path, options = {}) {
     if (auth?.token) {
         headers["Authorization"] = `Bearer ${auth.token}`;
     }
-
-    const res = await fetch(path, { ...options, headers });
+    const res = await fetch(`${API_URL}${path}`, { ...options, headers });
 
     if (!res.ok) {
         let message = `요청 실패 (HTTP ${res.status})`;
