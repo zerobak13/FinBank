@@ -41,7 +41,7 @@
 
 ##  System Architecture
 
-![FinBank System Architecture](./FinBank System Architecture.drawio.png)
+![FinBankSystemArchitecture](./FinBankSystemArchitecture.drawio.png)
 
 본 프로젝트는 프론트엔드, 백엔드, 데이터베이스를 분리하여  
 각 계층의 책임을 명확히 하도록 설계했습니다.
