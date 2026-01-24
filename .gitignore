@@ -1,0 +1,31 @@
+# --- OS & IDE (MacBook 전용 포함) ---
+.DS_Store
+.idea/
+.vscode/
+*.iml
+*.class
+
+# --- Backend (Spring Boot / Gradle) ---
+finbank-backend/.gradle/
+finbank-backend/build/
+finbank-backend/bin/
+finbank-backend/out/
+
+# [중요] 실제 비밀번호가 있는 로컬 설정 파일 제외
+finbank-backend/src/main/resources/application-local.yml
+
+# --- Frontend (React / Node.js) ---
+finbank-frontend/node_modules/
+finbank-frontend/dist/
+# 민감한 환경 변수 파일 제외
+finbank-frontend/.env
+finbank-frontend/.env.local
+finbank-frontend/.env.development.local
+finbank-frontend/.env.test.local
+finbank-frontend/.env.production.local
+
+# 로그 파일
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
