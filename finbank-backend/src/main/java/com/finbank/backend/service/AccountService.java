@@ -3,6 +3,7 @@ package com.finbank.backend.service;
 import com.finbank.backend.domain.Account;
 import com.finbank.backend.domain.Member;
 import com.finbank.backend.domain.TransactionLog;
+import com.finbank.backend.domain.TransactionType;
 import com.finbank.backend.dto.*;
 import com.finbank.backend.exception.BusinessException;
 import com.finbank.backend.exception.NotFoundException;
@@ -13,6 +14,8 @@ import jakarta.transaction.Transactional;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 import java.util.stream.Collectors;
@@ -69,14 +72,20 @@ public class AccountService {
 
     public AccountDetailResponse getAccountDetail(Long accountId) {
         Member member = getCurrentMember();
+
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+
         if (!account.getMember().getId().equals(member.getId())) {
             throw new BusinessException("본인 계좌만 조회할 수 있습니다.");
         }
 
-        List<TransactionLog> logs = transactionLogRepository
-                .findByFromAccountOrToAccountOrderByCreatedAtDesc(account, account);
+        List<TransactionLog> logs =
+                transactionLogRepository.findByAccountPerspective(
+                        account,
+                        List.of(TransactionType.WITHDRAW, TransactionType.TRANSFER_OUT),
+                        List.of(TransactionType.DEPOSIT, TransactionType.TRANSFER_IN)
+                );
 
         AccountSummaryResponse summary = toSummary(account);
         List<TransactionLogResponse> txDtos = logs.stream()
@@ -86,12 +95,70 @@ public class AccountService {
         return new AccountDetailResponse(summary, txDtos);
     }
 
+
+    @Transactional
+    public void deposit(Long accountId, long amount) {
+        if (amount <= 0) {
+            throw new BusinessException("입금 금액은 0보다 커야 합니다.");
+        }
+
+        Member member = getCurrentMember();
+
+
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+        //본인 계좌 체크
+        if (!account.getMember().getId().equals(member.getId())) {
+            throw new BusinessException("본인 계좌만 입금할 수 있습니다.");
+        }
+
+        // 잔액 증가
+        account.deposit(amount);
+        accountRepository.save(account);
+
+        // 입금 로그
+        transactionLogRepository.save(
+                TransactionLog.deposit(account, amount, account.getBalance())
+        );
+    }
+
+
+    @Transactional
+    public void withdraw(Long accountId, long amount) {
+        if (amount <= 0) {
+            throw new BusinessException("출금 금액은 0보다 커야 합니다.");
+        }
+
+        Member member = getCurrentMember();
+
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+        //본인 계좌 체크
+        if (!account.getMember().getId().equals(member.getId())) {
+            throw new BusinessException("본인 계좌만 출금할 수 있습니다.");
+        }
+
+        if (account.getBalance() < amount) {
+            throw new BusinessException("잔액이 부족합니다.");
+        }
+
+        // 잔액 감소
+        account.withdraw(amount);
+        accountRepository.save(account);
+
+        // 출금 로그
+        transactionLogRepository.save(
+                TransactionLog.withdraw(account, amount, account.getBalance())
+        );
+    }
+
     @Transactional
     public void transfer(TransferRequest request) {
         Member member = getCurrentMember();
 
         Account from = accountRepository.findWithLockingById(request.getFromAccountId())
-                .orElseThrow(() -> new NotFoundException("From account not found: " + request.getFromAccountId()));
+                .orElseThrow(() -> new NotFoundException("From account not found"));
+
         if (!from.getMember().getId().equals(member.getId())) {
             throw new BusinessException("본인 계좌에서만 이체할 수 있습니다.");
         }
@@ -102,35 +169,29 @@ public class AccountService {
         if (from.getAccountNumber().equals(to.getAccountNumber())) {
             throw new BusinessException("같은 계좌로는 이체할 수 없습니다.");
         }
+
         if (from.isLocked() || to.isLocked()) {
             throw new BusinessException("잠금된 계좌가 있습니다.");
         }
+
         if (from.getBalance() < request.getAmount()) {
             throw new BusinessException("잔액이 부족합니다.");
         }
-        //출금처리
+
+        //잔액 이동
         from.withdraw(request.getAmount());
-        //입금처리
         to.deposit(request.getAmount());
-        //변경된 계좌 저장
+
         accountRepository.save(from);
         accountRepository.save(to);
-        //출금 로그 생성
-        validateWithdrawLedger(from);
-        TransactionLog withdrawLog = TransactionLog.withdraw(from,
-                request.getAmount(), from.getBalance());
-        //입금 로그 생성
-        validateDepositLedger(to);
-        TransactionLog depositLog = TransactionLog.deposit(to,
-                request.getAmount(), to.getBalance());
-        //이체 로그 생성
-        validateTransferLedger(from, to);
-        TransactionLog transferLog = TransactionLog.transfer(from, to,
-                request.getAmount(), from.getBalance());
-        //로그 저장
-        transactionLogRepository.save(withdrawLog);
-        transactionLogRepository.save(depositLog);
-        transactionLogRepository.save(transferLog);
+
+        //이체 로그
+        transactionLogRepository.save(
+                TransactionLog.transferOut(from, to, request.getAmount(), from.getBalance())
+        );
+        transactionLogRepository.save(
+                TransactionLog.transferIn(from, to, request.getAmount(), to.getBalance())
+        );
     }
 
     private AccountSummaryResponse toSummary(Account a) {
@@ -170,28 +231,6 @@ public class AccountService {
     }
 
 
-
-    // ===== Ledger Rule Validation =====
-
-    // ===== Ledger Rule Validation =====
-
-    void validateWithdrawLedger(Account from) {
-        if (from == null) {
-            throw new BusinessException("WITHDRAW 로그에는 from 계좌가 필요합니다.");
-        }
-    }
-
-    void validateDepositLedger(Account to) {
-        if (to == null) {
-            throw new BusinessException("DEPOSIT 로그에는 to 계좌가 필요합니다.");
-        }
-    }
-
-    void validateTransferLedger(Account from, Account to) {
-        if (from == null || to == null) {
-            throw new BusinessException("TRANSFER 로그에는 from/to 계좌가 모두 필요합니다.");
-        }
-    }
 
 
 
