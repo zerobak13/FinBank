@@ -2,69 +2,81 @@ package com.finbank.backend.service;
 
 import com.finbank.backend.domain.Account;
 import com.finbank.backend.domain.Member;
+import com.finbank.backend.domain.TransactionLog;
+import com.finbank.backend.domain.TransactionType;
 import com.finbank.backend.dto.TransferRequest;
 import com.finbank.backend.repository.AccountRepository;
 import com.finbank.backend.repository.MemberRepository;
+import com.finbank.backend.repository.TransactionLogRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
+
 @SpringBootTest
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 class AccountConcurrencyTest {
 
-    @Autowired private AccountService accountService;
-    @Autowired private AccountRepository accountRepository;
-    @Autowired private MemberRepository memberRepository;
+    @Autowired AccountService accountService;
+    @Autowired AccountRepository accountRepository;
+    @Autowired MemberRepository memberRepository;
+    @Autowired TransactionLogRepository transactionLogRepository;
 
-    private final String TEST_EMAIL = "test@test.com";
+    private static final String EMAIL = "test@test.com";
 
     @BeforeEach
-    void clean() {
+    void setUp() {
+        transactionLogRepository.deleteAllInBatch();
         accountRepository.deleteAllInBatch();
         memberRepository.deleteAllInBatch();
+
+        Member member = new Member(EMAIL, "테스터", "password");
+        memberRepository.saveAndFlush(member);
     }
 
     @Test
-    void whenTwoConcurrentTransfers_thenOnlyOneSucceeds() throws InterruptedException {
+    void concurrent_transfer_only_one_should_succeed() throws InterruptedException {
 
-        // given
-        Member member = new Member(TEST_EMAIL, "테스터", "password");
-        memberRepository.saveAndFlush(member);
+        Member member = memberRepository.findByEmail(EMAIL).orElseThrow();
 
-        Account from = new Account(member, "111-111", 100000L);
-        Long fromId = accountRepository.saveAndFlush(from).getId();
+        Account from = accountRepository.saveAndFlush(
+                new Account(member, "111-111", 100_000L)
+        );
 
-        Account to = new Account(member, "222-222", 0L);
-        String toNum = accountRepository.saveAndFlush(to).getAccountNumber();
+        Account to = accountRepository.saveAndFlush(
+                new Account(member, "222-222", 0L)
+        );
 
-        TransferRequest request = new TransferRequest(fromId, toNum, 70000L);
+        TransferRequest request =
+                new TransferRequest(from.getId(), to.getAccountNumber(), 70_000L);
 
         int threadCount = 2;
-        ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         CountDownLatch latch = new CountDownLatch(threadCount);
 
-        // when
         for (int i = 0; i < threadCount; i++) {
-            executorService.execute(() -> {
+            executor.submit(() -> {
                 try {
-                    UsernamePasswordAuthenticationToken auth =
+                    SecurityContextHolder.getContext().setAuthentication(
                             new UsernamePasswordAuthenticationToken(
-                                    TEST_EMAIL, null, Collections.emptyList()
-                            );
-                    SecurityContextHolder.getContext().setAuthentication(auth);
-
+                                    EMAIL, null, Collections.emptyList()
+                            )
+                    );
                     accountService.transfer(request);
-                } catch (Exception e) {
-                    System.out.println("기대된 실패: " + e.getMessage());
+                } catch (Exception ignored) {
+                    //동시성 실패는 정상 시나리오
                 } finally {
                     SecurityContextHolder.clearContext();
                     latch.countDown();
@@ -73,10 +85,23 @@ class AccountConcurrencyTest {
         }
 
         latch.await();
-        executorService.shutdown();
+        executor.shutdown();
 
-        // then
-        Account finalAccount = accountRepository.findById(fromId).get();
-        assertEquals(30000L, finalAccount.getBalance());
+        // then - 상태 검증 (핵심)
+        Account finalFrom = accountRepository.findById(from.getId()).orElseThrow();
+        Account finalTo = accountRepository.findById(to.getId()).orElseThrow();
+
+        assertThat(finalFrom.getBalance()).isEqualTo(30_000L);
+        assertThat(finalTo.getBalance()).isEqualTo(70_000L);
+
+        List<TransactionLog> logs = transactionLogRepository.findAll();
+
+        assertThat(logs)
+                .filteredOn(l -> l.getType() == TransactionType.TRANSFER_OUT)
+                .hasSize(1);
+
+        assertThat(logs)
+                .filteredOn(l -> l.getType() == TransactionType.TRANSFER_IN)
+                .hasSize(1);
     }
 }
