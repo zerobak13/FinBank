@@ -1,0 +1,6 @@
+# application-local.yml
+# application.yml의 ${ } 안에 있는 이름과 맞춰줌
+
+DB_USERNAME: finuser
+DB_PASSWORD: finpass1234
+JWT_SECRET_KEY: VerySecretJwtKeyForFinbankDemoProject123456
