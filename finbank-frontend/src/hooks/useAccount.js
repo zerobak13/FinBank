@@ -28,18 +28,35 @@ export function useAccount(auth, notify, onLogout) {
         }
     };
 
-    const selectAccount = async (id, showToast = true) => {
-        try {
-            setLoading(true);
-            const data = await accountApi.getAccountDetail(id);
-            setSelected(data);
-            if (showToast) notify("계좌를 불러왔습니다.", "success");
-        } catch (e) {
-            notify(e.message, "error");
-        } finally {
-            setLoading(false);
-        }
-    };
+   const selectAccount = async (id, showToast = true) => {
+       try {
+           setLoading(true);
+
+           const [account, txPage] = await Promise.all([
+               accountApi.getAccountDetail(id),
+               accountApi.getAccountTransactions(id, 0, 20),
+           ]);
+
+           setSelected({
+               account,
+               transactions: txPage.content,
+               pageInfo: {
+                   page: txPage.page,
+                   size: txPage.size,
+                   totalElements: txPage.totalElements,
+                   totalPages: txPage.totalPages,
+                   first: txPage.first,
+                   last: txPage.last,
+               },
+           });
+
+           if (showToast) notify("계좌를 불러왔습니다.", "success");
+       } catch (e) {
+           notify(e.message, "error");
+       } finally {
+           setLoading(false);
+       }
+   };
 
     return {
         accounts, selected, loading,

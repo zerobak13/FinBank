@@ -32,8 +32,17 @@ public class AccountController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<AccountDetailResponse> getDetail(@PathVariable Long id) {
-        return ResponseEntity.ok(accountService.getAccountDetail(id));
+    public ResponseEntity<AccountSummaryResponse> getDetail(@PathVariable Long id) {
+        return ResponseEntity.ok(accountService.getAccountSummary(id));
+    }
+
+    @GetMapping("/{id}/transactions")
+    public ResponseEntity<PageResponse<TransactionLogResponse>> getTransactions(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ResponseEntity.ok(accountService.getAccountTransactions(id, page, size));
     }
 
     @PostMapping("/{id}/deposit")

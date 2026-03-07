@@ -14,6 +14,12 @@ import jakarta.transaction.Transactional;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import com.finbank.backend.dto.PageResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -84,8 +90,9 @@ public class AccountService {
                 transactionLogRepository.findByAccountPerspective(
                         account,
                         List.of(TransactionType.WITHDRAW, TransactionType.TRANSFER_OUT),
-                        List.of(TransactionType.DEPOSIT, TransactionType.TRANSFER_IN)
-                );
+                        List.of(TransactionType.DEPOSIT, TransactionType.TRANSFER_IN),
+                        Pageable.unpaged()
+                ).getContent();
 
         AccountSummaryResponse summary = toSummary(account);
         List<TransactionLogResponse> txDtos = logs.stream()
@@ -93,6 +100,46 @@ public class AccountService {
                 .collect(Collectors.toList());
 
         return new AccountDetailResponse(summary, txDtos);
+    }
+
+    public AccountSummaryResponse getAccountSummary(Long accountId) {
+        Member member = getCurrentMember();
+
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+
+        if (!account.getMember().getId().equals(member.getId())) {
+            throw new BusinessException("본인 계좌만 조회할 수 있습니다.");
+        }
+
+        return toSummary(account);
+    }
+
+    public PageResponse<TransactionLogResponse> getAccountTransactions(Long accountId, int page, int size) {
+        Member member = getCurrentMember();
+
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+
+        if (!account.getMember().getId().equals(member.getId())) {
+            throw new BusinessException("본인 계좌만 조회할 수 있습니다.");
+        }
+
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.DESC, "createdAt")
+        );
+
+        Page<TransactionLog> logPage = transactionLogRepository.findByAccountPerspective(
+                account,
+                List.of(TransactionType.WITHDRAW, TransactionType.TRANSFER_OUT),
+                List.of(TransactionType.DEPOSIT, TransactionType.TRANSFER_IN),
+                pageable
+        );
+
+        Page<TransactionLogResponse> dtoPage = logPage.map(this::toTxDto);
+        return new PageResponse<>(dtoPage);
     }
 
 

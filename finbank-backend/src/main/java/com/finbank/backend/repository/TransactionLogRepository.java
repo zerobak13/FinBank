@@ -7,6 +7,8 @@ import com.finbank.backend.domain.TransactionType;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 
@@ -28,11 +30,11 @@ public interface TransactionLogRepository extends JpaRepository<TransactionLog, 
             t.toAccount = :account
             and t.type in (:inTypes)
         )
-    order by t.createdAt desc
 """)
-    List<TransactionLog> findByAccountPerspective(
+    Page<TransactionLog> findByAccountPerspective(
             @Param("account") Account account,
             @Param("outTypes") List<TransactionType> outTypes,
-            @Param("inTypes") List<TransactionType> inTypes
+            @Param("inTypes") List<TransactionType> inTypes,
+            Pageable pageable
     );
 }

@@ -3,6 +3,8 @@ import { client } from "./client";
 export const accountApi = {
     getAccounts: () => client("/api/accounts"),
     getAccountDetail: (id) => client(`/api/accounts/${id}`),
+    getAccountTransactions: (id, page = 0, size = 20) =>
+        client(`/api/accounts/${id}/transactions?page=${page}&size=${size}`),
     createAccount: (initialDeposit) =>
         client("/api/accounts", {
             method: "POST",
