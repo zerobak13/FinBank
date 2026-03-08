@@ -12,10 +12,11 @@ spring:
     open-in-view: true
     hibernate:
       ddl-auto: update   # 데이터를 유지하기 위해 update로 변경 권장
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
+        generate_statistics: false
     #database-platform: org.hibernate.dialect.MySQLDialect
 server:
   port: 8080
@@ -24,3 +25,9 @@ jwt:
   # JWT 시크릿 키도 보안상 매우 중요하므로 변수화합니다.
   secret: ${JWT_SECRET_KEY}
   expiration-ms: 3600000
+
+logging:
+  level:
+    org.hibernate.SQL: off
+    org.hibernate.orm.jdbc.bind: off
+    org.hibernate.stat: off

@@ -198,24 +198,85 @@ public class AccountService {
                 TransactionLog.withdraw(account, amount, account.getBalance())
         );
     }
+//
+//    @Transactional
+//    public void transfer(TransferRequest request) {
+//        Member member = getCurrentMember();
+//
+//        Account from = accountRepository.findWithLockingById(request.getFromAccountId())
+//                .orElseThrow(() -> new NotFoundException("From account not found"));
+//
+//        if (!from.getMember().getId().equals(member.getId())) {
+//            throw new BusinessException("본인 계좌에서만 이체할 수 있습니다.");
+//        }
+//
+//        Account to = accountRepository.findWithLockingByAccountNumber(request.getToAccountNumber())
+//                .orElseThrow(() -> new NotFoundException("받는 계좌를 찾을 수 없습니다."));
+//
+//        if (from.getAccountNumber().equals(to.getAccountNumber())) {
+//            throw new BusinessException("같은 계좌로는 이체할 수 없습니다.");
+//        }
+//
+//        if (from.isLocked() || to.isLocked()) {
+//            throw new BusinessException("잠금된 계좌가 있습니다.");
+//        }
+//
+//        if (from.getBalance() < request.getAmount()) {
+//            throw new BusinessException("잔액이 부족합니다.");
+//        }
+//
+//        //잔액 이동
+//        from.withdraw(request.getAmount());
+//        to.deposit(request.getAmount());
+//
+//        accountRepository.save(from);
+//        accountRepository.save(to);
+//
+//        //이체 로그
+//        transactionLogRepository.save(
+//                TransactionLog.transferOut(from, to, request.getAmount(), from.getBalance())
+//        );
+//        transactionLogRepository.save(
+//                TransactionLog.transferIn(from, to, request.getAmount(), to.getBalance())
+//        );
+//    }
 
     @Transactional
     public void transfer(TransferRequest request) {
         Member member = getCurrentMember();
 
-        Account from = accountRepository.findWithLockingById(request.getFromAccountId())
+        // 1. 계좌 조회는 우선 락 없이 수행
+        Account fromAccount = accountRepository.findById(request.getFromAccountId())
                 .orElseThrow(() -> new NotFoundException("From account not found"));
 
-        if (!from.getMember().getId().equals(member.getId())) {
+        if (!fromAccount.getMember().getId().equals(member.getId())) {
             throw new BusinessException("본인 계좌에서만 이체할 수 있습니다.");
         }
 
-        Account to = accountRepository.findWithLockingByAccountNumber(request.getToAccountNumber())
+        Account toAccount = accountRepository.findByAccountNumber(request.getToAccountNumber())
                 .orElseThrow(() -> new NotFoundException("받는 계좌를 찾을 수 없습니다."));
 
-        if (from.getAccountNumber().equals(to.getAccountNumber())) {
+        if (fromAccount.getId().equals(toAccount.getId())) {
             throw new BusinessException("같은 계좌로는 이체할 수 없습니다.");
         }
+
+        if (request.getAmount() <= 0) {
+            throw new BusinessException("이체 금액은 0보다 커야 합니다.");
+        }
+
+        // 2. 락 획득 순서를 ID 기준으로 통일
+        Long firstLockId = Math.min(fromAccount.getId(), toAccount.getId());
+        Long secondLockId = Math.max(fromAccount.getId(), toAccount.getId());
+
+        Account firstLocked = accountRepository.findWithLockingById(firstLockId)
+                .orElseThrow(() -> new NotFoundException("첫 번째 계좌를 찾을 수 없습니다."));
+
+        Account secondLocked = accountRepository.findWithLockingById(secondLockId)
+                .orElseThrow(() -> new NotFoundException("두 번째 계좌를 찾을 수 없습니다."));
+
+        // 3. 실제 from / to 재매핑
+        Account from = firstLocked.getId().equals(fromAccount.getId()) ? firstLocked : secondLocked;
+        Account to = firstLocked.getId().equals(toAccount.getId()) ? firstLocked : secondLocked;
 
         if (from.isLocked() || to.isLocked()) {
             throw new BusinessException("잠금된 계좌가 있습니다.");
@@ -225,14 +286,14 @@ public class AccountService {
             throw new BusinessException("잔액이 부족합니다.");
         }
 
-        //잔액 이동
+        // 4. 잔액 이동
         from.withdraw(request.getAmount());
         to.deposit(request.getAmount());
 
         accountRepository.save(from);
         accountRepository.save(to);
 
-        //이체 로그
+        // 5. 이체 로그
         transactionLogRepository.save(
                 TransactionLog.transferOut(from, to, request.getAmount(), from.getBalance())
         );
@@ -240,6 +301,7 @@ public class AccountService {
                 TransactionLog.transferIn(from, to, request.getAmount(), to.getBalance())
         );
     }
+
 
     private AccountSummaryResponse toSummary(Account a) {
         return new AccountSummaryResponse(
