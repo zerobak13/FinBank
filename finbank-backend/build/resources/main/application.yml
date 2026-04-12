@@ -24,7 +24,8 @@ server:
 jwt:
   # JWT 시크릿 키도 보안상 매우 중요하므로 변수화합니다.
   secret: ${JWT_SECRET_KEY}
-  expiration-ms: 3600000
+  expiration-ms: 3600000          # Access Token: 1시간
+  refresh-expiration-ms: 604800000 # Refresh Token: 7일
 
 logging:
   level:
