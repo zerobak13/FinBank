@@ -1,24 +1,27 @@
 package com.finbank.backend.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
+@Schema(description = "이체 요청")
 public class TransferRequest {
 
+    @Schema(description = "출금 계좌 ID", example = "1")
     @NotNull
     private Long fromAccountId;
 
+    @Schema(description = "입금 계좌번호 (12자리)", example = "123456789012")
     @NotBlank
     private String toAccountNumber;
 
+    @Schema(description = "이체 금액 (1 이상)", example = "10000")
     @Min(1)
     private long amount;
 
-    // 1. 기본 생성자
     public TransferRequest() {}
 
-    // 2. 모든 필드를 받는 생성자 (테스트 코드에서 사용)
     public TransferRequest(Long fromAccountId, String toAccountNumber, long amount) {
         this.fromAccountId = fromAccountId;
         this.toAccountNumber = toAccountNumber;
