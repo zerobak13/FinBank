@@ -11,13 +11,25 @@ spring:
   jpa:
     open-in-view: true
     hibernate:
-      ddl-auto: update   # 데이터를 유지하기 위해 update로 변경 권장
+      # Flyway가 스키마를 관리하므로 validate 사용
+      # update는 변경 이력이 남지 않아 실무에서는 사용 금지
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
         format_sql: false
         generate_statistics: false
-    #database-platform: org.hibernate.dialect.MySQLDialect
+
+  flyway:
+    enabled: true
+    # baseline-version: 2
+    #   - 기존 DB (테이블 이미 있음, Flyway 히스토리 없음):
+    #     V1, V2 모두 baseline으로 마킹 → 실행 안 함 (이미 존재하므로)
+    #   - 빈 DB (완전히 새 환경):
+    #     baseline-on-migrate가 비어있는 DB에는 작동 안 함 → V1부터 순서대로 실행
+    baseline-on-migrate: true
+    baseline-version: 2
+    locations: classpath:db/migration
 server:
   port: 8080
 
