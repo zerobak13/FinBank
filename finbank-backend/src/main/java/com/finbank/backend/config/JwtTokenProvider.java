@@ -23,7 +23,8 @@ public class JwtTokenProvider {
         this.validityInMs = validityInMs;
     }
 
-    public String createToken(String email) {
+    /** Access Token 발급 (1시간) */
+    public String createAccessToken(String email) {
         Date now = new Date();
         Date validity = new Date(now.getTime() + validityInMs);
 
