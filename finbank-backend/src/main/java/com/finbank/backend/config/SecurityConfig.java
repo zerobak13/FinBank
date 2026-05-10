@@ -30,7 +30,17 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/h2-console/**").permitAll()
+                        .requestMatchers(
+                                "/api/auth/register",
+                                "/api/auth/login",
+                                "/api/auth/refresh",
+                                "/api/auth/logout",
+                                "/h2-console/**",
+                                // Swagger UI
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/v3/api-docs/**"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
                 .headers(headers -> headers.frameOptions(frame -> frame.disable()));
@@ -46,7 +56,8 @@ public class SecurityConfig {
         // Vercel 주소를 넣어주기
         configuration.setAllowedOriginPatterns(java.util.List.of(
                 "https://finbank-frontend.vercel.app",             // 메인 주소
-                "https://finbank-frontend-*.vercel.app"           // 모든 Vercel 임시 주소 허용 (와일드카드)
+                "https://finbank-frontend-*.vercel.app",          // 모든 Vercel 임시 주소 허용 (와일드카드)
+                "http://localhost:5173"//로컬 주소 허용
         ));
 
         configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));

@@ -1,5 +1,6 @@
-const API_URL = "https://finbank-backend.onrender.com";
-
+const API_URL = window.location.hostname === 'localhost'
+    ? "http://localhost:8080"
+    : "https://finbank-backend.onrender.com";
 
 export async function client(path, options = {}) {
     const rawAuth = localStorage.getItem("finbankAuth");

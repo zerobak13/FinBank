@@ -10,9 +10,15 @@ import com.finbank.backend.exception.NotFoundException;
 import com.finbank.backend.repository.AccountRepository;
 import com.finbank.backend.repository.MemberRepository;
 import com.finbank.backend.repository.TransactionLogRepository;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+
+import com.finbank.backend.dto.PageResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -61,7 +67,7 @@ public class AccountService {
 
         return toSummary(saved);
     }
-
+    @Transactional(readOnly = true)
     public List<AccountSummaryResponse> getMyAccounts() {
         Member member = getCurrentMember();
         List<Account> accounts = accountRepository.findByMember(member);
@@ -70,6 +76,7 @@ public class AccountService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public AccountDetailResponse getAccountDetail(Long accountId) {
         Member member = getCurrentMember();
 
@@ -84,8 +91,9 @@ public class AccountService {
                 transactionLogRepository.findByAccountPerspective(
                         account,
                         List.of(TransactionType.WITHDRAW, TransactionType.TRANSFER_OUT),
-                        List.of(TransactionType.DEPOSIT, TransactionType.TRANSFER_IN)
-                );
+                        List.of(TransactionType.DEPOSIT, TransactionType.TRANSFER_IN),
+                        Pageable.unpaged()
+                ).getContent();
 
         AccountSummaryResponse summary = toSummary(account);
         List<TransactionLogResponse> txDtos = logs.stream()
@@ -93,6 +101,48 @@ public class AccountService {
                 .collect(Collectors.toList());
 
         return new AccountDetailResponse(summary, txDtos);
+    }
+
+    @Transactional(readOnly = true)
+    public AccountSummaryResponse getAccountSummary(Long accountId) {
+        Member member = getCurrentMember();
+
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+
+        if (!account.getMember().getId().equals(member.getId())) {
+            throw new BusinessException("본인 계좌만 조회할 수 있습니다.");
+        }
+
+        return toSummary(account);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<TransactionLogResponse> getAccountTransactions(Long accountId, int page, int size) {
+        Member member = getCurrentMember();
+
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+
+        if (!account.getMember().getId().equals(member.getId())) {
+            throw new BusinessException("본인 계좌만 조회할 수 있습니다.");
+        }
+
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.DESC, "createdAt")
+        );
+
+        Page<TransactionLog> logPage = transactionLogRepository.findByAccountPerspective(
+                account,
+                List.of(TransactionType.WITHDRAW, TransactionType.TRANSFER_OUT),
+                List.of(TransactionType.DEPOSIT, TransactionType.TRANSFER_IN),
+                pageable
+        );
+
+        Page<TransactionLogResponse> dtoPage = logPage.map(this::toTxDto);
+        return new PageResponse<>(dtoPage);
     }
 
 
@@ -151,24 +201,85 @@ public class AccountService {
                 TransactionLog.withdraw(account, amount, account.getBalance())
         );
     }
+//
+//    @Transactional
+//    public void transfer(TransferRequest request) {
+//        Member member = getCurrentMember();
+//
+//        Account from = accountRepository.findWithLockingById(request.getFromAccountId())
+//                .orElseThrow(() -> new NotFoundException("From account not found"));
+//
+//        if (!from.getMember().getId().equals(member.getId())) {
+//            throw new BusinessException("본인 계좌에서만 이체할 수 있습니다.");
+//        }
+//
+//        Account to = accountRepository.findWithLockingByAccountNumber(request.getToAccountNumber())
+//                .orElseThrow(() -> new NotFoundException("받는 계좌를 찾을 수 없습니다."));
+//
+//        if (from.getAccountNumber().equals(to.getAccountNumber())) {
+//            throw new BusinessException("같은 계좌로는 이체할 수 없습니다.");
+//        }
+//
+//        if (from.isLocked() || to.isLocked()) {
+//            throw new BusinessException("잠금된 계좌가 있습니다.");
+//        }
+//
+//        if (from.getBalance() < request.getAmount()) {
+//            throw new BusinessException("잔액이 부족합니다.");
+//        }
+//
+//        //잔액 이동
+//        from.withdraw(request.getAmount());
+//        to.deposit(request.getAmount());
+//
+//        accountRepository.save(from);
+//        accountRepository.save(to);
+//
+//        //이체 로그
+//        transactionLogRepository.save(
+//                TransactionLog.transferOut(from, to, request.getAmount(), from.getBalance())
+//        );
+//        transactionLogRepository.save(
+//                TransactionLog.transferIn(from, to, request.getAmount(), to.getBalance())
+//        );
+//    }
 
     @Transactional
     public void transfer(TransferRequest request) {
         Member member = getCurrentMember();
 
-        Account from = accountRepository.findWithLockingById(request.getFromAccountId())
+        // 1. 계좌 조회는 우선 락 없이 수행
+        Account fromAccount = accountRepository.findById(request.getFromAccountId())
                 .orElseThrow(() -> new NotFoundException("From account not found"));
 
-        if (!from.getMember().getId().equals(member.getId())) {
+        if (!fromAccount.getMember().getId().equals(member.getId())) {
             throw new BusinessException("본인 계좌에서만 이체할 수 있습니다.");
         }
 
-        Account to = accountRepository.findWithLockingByAccountNumber(request.getToAccountNumber())
+        Account toAccount = accountRepository.findByAccountNumber(request.getToAccountNumber())
                 .orElseThrow(() -> new NotFoundException("받는 계좌를 찾을 수 없습니다."));
 
-        if (from.getAccountNumber().equals(to.getAccountNumber())) {
+        if (fromAccount.getId().equals(toAccount.getId())) {
             throw new BusinessException("같은 계좌로는 이체할 수 없습니다.");
         }
+
+        if (request.getAmount() <= 0) {
+            throw new BusinessException("이체 금액은 0보다 커야 합니다.");
+        }
+
+        // 2. 락 획득 순서를 ID 기준으로 통일
+        Long firstLockId = Math.min(fromAccount.getId(), toAccount.getId());
+        Long secondLockId = Math.max(fromAccount.getId(), toAccount.getId());
+
+        Account firstLocked = accountRepository.findWithLockingById(firstLockId)
+                .orElseThrow(() -> new NotFoundException("첫 번째 계좌를 찾을 수 없습니다."));
+
+        Account secondLocked = accountRepository.findWithLockingById(secondLockId)
+                .orElseThrow(() -> new NotFoundException("두 번째 계좌를 찾을 수 없습니다."));
+
+        // 3. 실제 from / to 재매핑
+        Account from = firstLocked.getId().equals(fromAccount.getId()) ? firstLocked : secondLocked;
+        Account to = firstLocked.getId().equals(toAccount.getId()) ? firstLocked : secondLocked;
 
         if (from.isLocked() || to.isLocked()) {
             throw new BusinessException("잠금된 계좌가 있습니다.");
@@ -178,14 +289,14 @@ public class AccountService {
             throw new BusinessException("잔액이 부족합니다.");
         }
 
-        //잔액 이동
+        // 4. 잔액 이동
         from.withdraw(request.getAmount());
         to.deposit(request.getAmount());
 
         accountRepository.save(from);
         accountRepository.save(to);
 
-        //이체 로그
+        // 5. 이체 로그
         transactionLogRepository.save(
                 TransactionLog.transferOut(from, to, request.getAmount(), from.getBalance())
         );
@@ -193,6 +304,7 @@ public class AccountService {
                 TransactionLog.transferIn(from, to, request.getAmount(), to.getBalance())
         );
     }
+
 
     private AccountSummaryResponse toSummary(Account a) {
         return new AccountSummaryResponse(
