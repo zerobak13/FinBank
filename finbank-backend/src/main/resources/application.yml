@@ -9,7 +9,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
-    open-in-view: true
+    open-in-view: false
     hibernate:
       # Flyway가 스키마를 관리하므로 validate 사용
       # update는 변경 이력이 남지 않아 실무에서는 사용 금지

@@ -17,7 +17,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = "http://localhost:5173")
 @Tag(name = "인증 (Auth)", description = """
         회원가입, 로그인, 토큰 재발급 API.
 
@@ -38,8 +37,10 @@ public class AuthController {
     @Operation(summary = "회원가입", description = "이메일, 이름, 비밀번호(4자 이상)로 회원가입합니다. Access Token과 Refresh Token을 함께 반환합니다.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "회원가입 성공"),
-            @ApiResponse(responseCode = "400", description = "입력값 유효성 오류"),
-            @ApiResponse(responseCode = "409", description = "이미 가입된 이메일")
+            @ApiResponse(responseCode = "400", description = "입력값 유효성 오류",
+                    content = @io.swagger.v3.oas.annotations.media.Content),
+            @ApiResponse(responseCode = "409", description = "이미 가입된 이메일",
+                    content = @io.swagger.v3.oas.annotations.media.Content)
     })
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
@@ -49,7 +50,8 @@ public class AuthController {
     @Operation(summary = "로그인", description = "이메일/비밀번호로 로그인합니다. Access Token과 Refresh Token을 함께 반환합니다.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "로그인 성공"),
-            @ApiResponse(responseCode = "401", description = "이메일 또는 비밀번호 불일치")
+            @ApiResponse(responseCode = "401", description = "이메일 또는 비밀번호 불일치",
+            content = @io.swagger.v3.oas.annotations.media.Content)
     })
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
@@ -67,7 +69,8 @@ public class AuthController {
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "새 Access Token + 새 Refresh Token 반환"),
-            @ApiResponse(responseCode = "400", description = "유효하지 않거나 만료된 Refresh Token")
+            @ApiResponse(responseCode = "400", description = "유효하지 않거나 만료된 Refresh Token",
+            content = @io.swagger.v3.oas.annotations.media.Content)
     })
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody TokenRefreshRequest request) {

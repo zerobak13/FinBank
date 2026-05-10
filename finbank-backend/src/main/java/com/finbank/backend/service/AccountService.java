@@ -10,7 +10,7 @@ import com.finbank.backend.exception.NotFoundException;
 import com.finbank.backend.repository.AccountRepository;
 import com.finbank.backend.repository.MemberRepository;
 import com.finbank.backend.repository.TransactionLogRepository;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
@@ -67,7 +67,7 @@ public class AccountService {
 
         return toSummary(saved);
     }
-
+    @Transactional(readOnly = true)
     public List<AccountSummaryResponse> getMyAccounts() {
         Member member = getCurrentMember();
         List<Account> accounts = accountRepository.findByMember(member);
@@ -76,6 +76,7 @@ public class AccountService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public AccountDetailResponse getAccountDetail(Long accountId) {
         Member member = getCurrentMember();
 
@@ -102,6 +103,7 @@ public class AccountService {
         return new AccountDetailResponse(summary, txDtos);
     }
 
+    @Transactional(readOnly = true)
     public AccountSummaryResponse getAccountSummary(Long accountId) {
         Member member = getCurrentMember();
 
@@ -115,6 +117,7 @@ public class AccountService {
         return toSummary(account);
     }
 
+    @Transactional(readOnly = true)
     public PageResponse<TransactionLogResponse> getAccountTransactions(Long accountId, int page, int size) {
         Member member = getCurrentMember();
 
