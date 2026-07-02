@@ -32,7 +32,6 @@ import org.mockito.quality.Strictness;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-
 class TransferRuleTest {
 
     private static final String TEST_EMAIL = "test@test.com";
@@ -77,13 +76,28 @@ class TransferRuleTest {
         return acc;
     }
 
+    /**
+     * 현재 transfer() 구현의 계좌 조회 흐름에 맞춘 공통 스텁.
+     * 1) 받는 계좌 ID 프로젝션: findIdByAccountNumber(toNumber)
+     * 2) 락 획득(각 행의 첫 조회): findWithLockingById(fromId), findWithLockingById(toId)
+     */
+    private void stubTransferLookups(Account from, Account to) {
+        // mock 메서드 호출을 미리 지역변수로 추출한다.
+        // when(...)/thenReturn(...) 내부에서 다른 mock을 호출하면
+        // Mockito가 미완성 스터빙으로 오인해 UnfinishedStubbingException이 발생한다.
+        Long fromId = from.getId();
+        Long toId = to.getId();
+        String toNumber = to.getAccountNumber();
+
+        when(accountRepository.findIdByAccountNumber(toNumber)).thenReturn(Optional.of(toId));
+        when(accountRepository.findWithLockingById(fromId)).thenReturn(Optional.of(from));
+        when(accountRepository.findWithLockingById(toId)).thenReturn(Optional.of(to));
+    }
+
     @Test
     @DisplayName("받는 계좌가 없으면 NotFoundException")
     void transfer_toAccountNotFound_throwsNotFound() {
-        Account from = mockAccount(10L, 1L, "111-111", 100_000L, false);
-
-        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(from));
-        when(accountRepository.findWithLockingByAccountNumber("222-222")).thenReturn(Optional.empty());
+        when(accountRepository.findIdByAccountNumber("222-222")).thenReturn(Optional.empty());
 
         TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
 
@@ -97,8 +111,7 @@ class TransferRuleTest {
         Account from = mockAccount(10L, 999L, "111-111", 100_000L, false); // ownerId != currentMemberId(1)
         Account to = mockAccount(20L, 2L, "222-222", 0L, false);
 
-        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(from));
-        when(accountRepository.findWithLockingByAccountNumber("222-222")).thenReturn(Optional.of(to));
+        stubTransferLookups(from, to);
 
         TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
 
@@ -110,13 +123,10 @@ class TransferRuleTest {
     }
 
     @Test
-    @DisplayName("같은 계좌번호로 이체하면 BusinessException")
-    void transfer_sameAccountNumber_throwsBusiness() {
-        Account from = mockAccount(10L, 1L, "111-111", 100_000L, false);
-        Account to = mockAccount(20L, 2L, "111-111", 0L, false); // same number
-
-        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(from));
-        when(accountRepository.findWithLockingByAccountNumber("111-111")).thenReturn(Optional.of(to));
+    @DisplayName("같은 계좌로 이체하면 BusinessException (from/to 동일 ID)")
+    void transfer_sameAccount_throwsBusiness() {
+        // 현재 구현은 계좌번호가 아니라 ID 동일성으로 같은 계좌 여부를 판단한다.
+        when(accountRepository.findIdByAccountNumber("111-111")).thenReturn(Optional.of(10L));
 
         TransferRequest req = new TransferRequest(10L, "111-111", 10_000L);
 
@@ -133,8 +143,7 @@ class TransferRuleTest {
         Account from = mockAccount(10L, 1L, "111-111", 100_000L, true); // locked
         Account to = mockAccount(20L, 2L, "222-222", 0L, false);
 
-        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(from));
-        when(accountRepository.findWithLockingByAccountNumber("222-222")).thenReturn(Optional.of(to));
+        stubTransferLookups(from, to);
 
         TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
 
@@ -151,8 +160,7 @@ class TransferRuleTest {
         Account from = mockAccount(10L, 1L, "111-111", 5_000L, false);
         Account to = mockAccount(20L, 2L, "222-222", 0L, false);
 
-        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(from));
-        when(accountRepository.findWithLockingByAccountNumber("222-222")).thenReturn(Optional.of(to));
+        stubTransferLookups(from, to);
 
         TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
 
@@ -166,14 +174,12 @@ class TransferRuleTest {
     @Test
     @DisplayName("성공 시에는 계좌 save 2번 + 로그 save 2번 호출")
     void transfer_success_callsSaves() {
-        // 성공 케이스는 “규칙 테스트의 완성도” 올려줌 (예외만 있으면 아쉬워서 1개만 추가)
         Account from = mockAccount(10L, 1L, "111-111", 100_000L, false);
         Account to = mockAccount(20L, 2L, "222-222", 0L, false);
 
-        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(from));
-        when(accountRepository.findWithLockingByAccountNumber("222-222")).thenReturn(Optional.of(to));
+        stubTransferLookups(from, to);
 
-        // withdraw/deposit는 실제 메서드 호출될 수 있으니(stub) 그냥 void 처리
+        // withdraw/deposit는 실제 잔액 변경 대신 void 처리
         doNothing().when(from).withdraw(10_000L);
         doNothing().when(to).deposit(10_000L);
 
@@ -181,7 +187,7 @@ class TransferRuleTest {
 
         assertDoesNotThrow(() -> accountService.transfer(req));
 
-        // 호출 순서도 체크하면 “완성도” 확 올라감
+        // 호출 순서 검증: from 저장 → to 저장 → 로그 2건
         InOrder inOrder = inOrder(accountRepository, transactionLogRepository);
         inOrder.verify(accountRepository).save(from);
         inOrder.verify(accountRepository).save(to);
