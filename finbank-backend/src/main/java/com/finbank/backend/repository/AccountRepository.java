@@ -15,6 +15,8 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
 
     List<Account> findByMember(Member member);
 
+    boolean existsByAccountNumber(String accountNumber);
+
     /**
      * 계좌번호로 계좌 ID만 조회한다(프로젝션).
      * 이체 시 락 순서 결정을 위해 받는 계좌 ID가 필요하지만,

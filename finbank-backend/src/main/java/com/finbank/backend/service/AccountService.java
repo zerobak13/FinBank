@@ -21,8 +21,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
+import java.security.SecureRandom;
 import java.util.List;
-import java.util.Random;
 import java.util.stream.Collectors;
 
 @Service
@@ -280,11 +280,28 @@ public class AccountService {
         );
     }
 
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private static final int MAX_ACCOUNT_NUMBER_ATTEMPTS = 10;
+
+    /**
+     * 12자리 계좌번호를 생성한다.
+     * 예측 가능한 Random 대신 SecureRandom을 사용하고,
+     * 유니크 제약과 충돌하면 최대 {@value #MAX_ACCOUNT_NUMBER_ATTEMPTS}회까지 재생성한다.
+     */
     private String generateAccountNumber() {
-        Random random = new Random();
-        StringBuilder sb = new StringBuilder();
+        for (int attempt = 0; attempt < MAX_ACCOUNT_NUMBER_ATTEMPTS; attempt++) {
+            String candidate = randomAccountNumber();
+            if (!accountRepository.existsByAccountNumber(candidate)) {
+                return candidate;
+            }
+        }
+        throw new BusinessException("계좌번호 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    private String randomAccountNumber() {
+        StringBuilder sb = new StringBuilder(12);
         for (int i = 0; i < 12; i++) {
-            sb.append(random.nextInt(10));
+            sb.append(SECURE_RANDOM.nextInt(10));
         }
         return sb.toString();
     }
