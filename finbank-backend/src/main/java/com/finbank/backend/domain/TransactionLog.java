@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.time.LocalDateTime;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -21,14 +20,11 @@ public class TransactionLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-//    @Column(nullable = false, length = 20)
-//    private String type; // DEPOSIT, WITHDRAW, TRANSFER
+    // Enum으로 매핑하되 DB 컬럼 타입은 VARCHAR로 저장한다.
     @Enumerated(EnumType.STRING)
-    //이 필드는 Enum으로 매핑하되, JDBC(DB 컬럼 타입)는 VARCHAR로 쓰게함
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, length = 20)
     private TransactionType type;
-
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "from_account_id")

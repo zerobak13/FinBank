@@ -14,9 +14,6 @@ import java.util.List;
 
 public interface TransactionLogRepository extends JpaRepository<TransactionLog, Long> {
 
-    List<TransactionLog> findByFromAccountOrderByCreatedAtDesc(Account from);
-    List<TransactionLog> findByToAccountOrderByCreatedAtDesc(Account to);
-
     @Query("""
     select t
     from TransactionLog t

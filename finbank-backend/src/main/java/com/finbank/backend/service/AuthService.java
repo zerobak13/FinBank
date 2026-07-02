@@ -8,7 +8,6 @@ import com.finbank.backend.dto.LoginRequest;
 import com.finbank.backend.dto.RegisterRequest;
 import com.finbank.backend.dto.TokenRefreshRequest;
 import com.finbank.backend.exception.BusinessException;
-import com.finbank.backend.exception.NotFoundException;
 import com.finbank.backend.repository.MemberRepository;
 import com.finbank.backend.repository.RefreshTokenRepository;
 import org.springframework.beans.factory.annotation.Value;
