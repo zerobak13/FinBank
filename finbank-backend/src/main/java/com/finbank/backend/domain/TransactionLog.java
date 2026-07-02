@@ -92,5 +92,14 @@ public class TransactionLog {
         return log;
     }
 
-
+    /** 배치 이자 정산 로그 */
+    public static TransactionLog interest(Account account, long interestAmount, long balanceAfter) {
+        TransactionLog log = new TransactionLog();
+        log.type = TransactionType.INTEREST;
+        log.toAccount = account;
+        log.amount = interestAmount;
+        log.balanceAfter = balanceAfter;
+        log.description = "Daily Interest";
+        return log;
+    }
 }

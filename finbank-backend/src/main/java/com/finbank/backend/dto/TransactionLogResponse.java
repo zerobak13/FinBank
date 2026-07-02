@@ -1,5 +1,7 @@
 package com.finbank.backend.dto;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
@@ -30,9 +32,16 @@ public class TransactionLogResponse {
     @Schema(description = "거래 발생 시각", example = "2025-01-01T12:00:00")
     private LocalDateTime createdAt;
 
-    public TransactionLogResponse(Long id, String type, Long fromAccountId, Long toAccountId,
-                                  long amount, long balanceAfter, String description,
-                                  LocalDateTime createdAt) {
+    @JsonCreator
+    public TransactionLogResponse(
+            @JsonProperty("id")            Long id,
+            @JsonProperty("type")          String type,
+            @JsonProperty("fromAccountId") Long fromAccountId,
+            @JsonProperty("toAccountId")   Long toAccountId,
+            @JsonProperty("amount")        long amount,
+            @JsonProperty("balanceAfter")  long balanceAfter,
+            @JsonProperty("description")   String description,
+            @JsonProperty("createdAt")     LocalDateTime createdAt) {
         this.id = id;
         this.type = type;
         this.fromAccountId = fromAccountId;

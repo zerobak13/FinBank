@@ -6,7 +6,9 @@ import com.finbank.backend.domain.TransactionLog;
 import com.finbank.backend.domain.TransactionType;
 import com.finbank.backend.dto.TransferRequest;
 import com.finbank.backend.repository.AccountRepository;
+import com.finbank.backend.repository.IdempotencyKeyRepository;
 import com.finbank.backend.repository.MemberRepository;
+import com.finbank.backend.repository.RefreshTokenRepository;
 import com.finbank.backend.repository.TransactionLogRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,13 +33,17 @@ class TransactionLogTest {
     @Autowired AccountRepository accountRepository;
     @Autowired MemberRepository memberRepository;
     @Autowired TransactionLogRepository transactionLogRepository;
+    @Autowired RefreshTokenRepository refreshTokenRepository;
+    @Autowired IdempotencyKeyRepository idempotencyKeyRepository;
 
     private static final String TEST_EMAIL = "log@test.com";
 
     @BeforeEach
     void setUp() {
-        // FK 순서 고려해서 정리
+        // FK 순서 고려해서 정리 (members를 참조하는 테이블을 먼저 정리)
         transactionLogRepository.deleteAllInBatch();
+        idempotencyKeyRepository.deleteAllInBatch();
+        refreshTokenRepository.deleteAllInBatch();
         accountRepository.deleteAllInBatch();
         memberRepository.deleteAllInBatch();
 

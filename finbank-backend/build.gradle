@@ -39,6 +39,21 @@ dependencies {
     // Flyway (MySQL)
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-mysql'
+
+    // AOP (멱등성 처리)
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
+
+    // Spring Batch (이자 정산 배치)
+    implementation 'org.springframework.boot:spring-boot-starter-batch'
+
+    // MyBatis (배치 대량 조회)
+    implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:3.0.3'
+
+    // Redis (계좌 목록 캐싱)
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    // Redisson (분산 락 — 이체 동시성 제어)
+    implementation 'org.redisson:redisson-spring-boot-starter:3.27.2'
 }
 
 tasks.named('test') {

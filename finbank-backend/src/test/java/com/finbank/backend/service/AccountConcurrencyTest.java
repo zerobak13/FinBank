@@ -6,7 +6,9 @@ import com.finbank.backend.domain.TransactionLog;
 import com.finbank.backend.domain.TransactionType;
 import com.finbank.backend.dto.TransferRequest;
 import com.finbank.backend.repository.AccountRepository;
+import com.finbank.backend.repository.IdempotencyKeyRepository;
 import com.finbank.backend.repository.MemberRepository;
+import com.finbank.backend.repository.RefreshTokenRepository;
 import com.finbank.backend.repository.TransactionLogRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,12 +35,17 @@ class AccountConcurrencyTest {
     @Autowired AccountRepository accountRepository;
     @Autowired MemberRepository memberRepository;
     @Autowired TransactionLogRepository transactionLogRepository;
+    @Autowired IdempotencyKeyRepository idempotencyKeyRepository;
+    @Autowired RefreshTokenRepository refreshTokenRepository;
 
     private static final String EMAIL = "test@test.com";
 
     @BeforeEach
     void setUp() {
+        // members를 참조하는 테이블을 먼저 정리 (FK 제약)
         transactionLogRepository.deleteAllInBatch();
+        idempotencyKeyRepository.deleteAllInBatch();
+        refreshTokenRepository.deleteAllInBatch();
         accountRepository.deleteAllInBatch();
         memberRepository.deleteAllInBatch();
 

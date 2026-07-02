@@ -2,7 +2,6 @@ spring:
   profiles:
     active: local
   datasource:
-    # URL은 로컬 환경이므로 그대로 두어도 무방하지만, 외부 배포 시에는 이 또한 변수화합니다.
     url: jdbc:mysql://localhost:3306/finbank?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true
     username: ${DB_USERNAME}  # 변수 처리
     password: ${DB_PASSWORD}  # 변수 처리
@@ -30,6 +29,26 @@ spring:
     baseline-on-migrate: true
     baseline-version: 2
     locations: classpath:db/migration
+
+  batch:
+    jdbc:
+      # Spring Batch 메타 테이블 자동 생성 (BATCH_JOB_INSTANCE 등)
+      # 배치 실행 이력, 재시작 지점 등을 관리하는 테이블
+      initialize-schema: always
+    job:
+      # 애플리케이션 시작 시 자동 실행 방지 (스케줄러가 트리거)
+      enabled: false
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}   # 기본값 localhost, 운영 환경에서는 환경변수로 주입
+      port: ${REDIS_PORT:6379}
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 300000            # 캐시 TTL: 5분 (ms)
+
 server:
   port: 8080
 
@@ -38,6 +57,11 @@ jwt:
   secret: ${JWT_SECRET_KEY}
   expiration-ms: 3600000          # Access Token: 1시간
   refresh-expiration-ms: 604800000 # Refresh Token: 7일
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true  # interest_rate → interestRate 자동 매핑
 
 logging:
   level:

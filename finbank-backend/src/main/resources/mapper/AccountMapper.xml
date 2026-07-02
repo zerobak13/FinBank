@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.finbank.backend.mapper.AccountMapper">
+
+    <!--
+        배치 이자 정산 대상 계좌 페이징 조회.
+
+        [MyBatisPagingItemReader 동작 방식]
+          Spring Batch가 청크 단위로 이 쿼리를 반복 호출한다.
+          _skiprows : 건너뛸 행 수 (pageSize * pageNumber)
+          _pagesize : 한 번에 읽을 행 수 (= chunkSize)
+          두 파라미터는 Spring Batch가 자동으로 주입한다.
+
+        [대상 필터 조건]
+          - account_type = 'SAVINGS' : 적금 계좌만
+          - interest_rate > 0        : 이자율이 설정된 계좌만
+          - locked = 0               : 잠금되지 않은 계좌만
+          ORDER BY id → 매 실행마다 동일한 순서 보장
+    -->
+    <select id="findSavingsAccountsForBatch" resultType="com.finbank.backend.batch.dto.InterestSettlementItem">
+        SELECT
+            id,
+            balance,
+            interest_rate AS interestRate
+        FROM accounts
+        WHERE account_type  = 'SAVINGS'
+          AND interest_rate > 0
+          AND locked        = 0
+        ORDER BY id
+        LIMIT #{_pagesize} OFFSET #{_skiprows}
+    </select>
+
+</mapper>

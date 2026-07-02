@@ -1,6 +1,7 @@
 package com.finbank.backend.controller;
 
 import com.finbank.backend.dto.*;
+import com.finbank.backend.idempotency.Idempotent;
 import com.finbank.backend.service.AccountService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -74,6 +75,7 @@ public class AccountController {
             @ApiResponse(responseCode = "400", description = "입금액이 0 이하인 경우"),
             @ApiResponse(responseCode = "403", description = "본인 계좌가 아닌 경우")
     })
+    @Idempotent
     @PostMapping("/{id}/deposit")
     public ResponseEntity<Map<String, String>> deposit(
             @Parameter(description = "계좌 ID", example = "1") @PathVariable Long id,
@@ -89,6 +91,7 @@ public class AccountController {
             @ApiResponse(responseCode = "400", description = "출금액이 0 이하이거나 잔액 부족"),
             @ApiResponse(responseCode = "403", description = "본인 계좌가 아닌 경우")
     })
+    @Idempotent
     @PostMapping("/{id}/withdraw")
     public ResponseEntity<Map<String, String>> withdraw(
             @Parameter(description = "계좌 ID", example = "1") @PathVariable Long id,
@@ -102,6 +105,9 @@ public class AccountController {
             summary = "계좌 이체",
             description = """
                     계좌 간 이체를 수행합니다.
+
+                    **멱등성 지원**: `Idempotency-Key` 헤더(UUID v4)를 포함하면 동일 요청의 중복 실행을 방지합니다.
+                    네트워크 오류로 재시도 시에도 이체는 단 한 번만 실행됩니다. (24시간 유효)
 
                     **동시성 제어**: 데드락 방지를 위해 ID 오름차순으로 비관적 락(PESSIMISTIC_WRITE)을 획득합니다.
 
@@ -118,6 +124,7 @@ public class AccountController {
             @ApiResponse(responseCode = "403", description = "본인 계좌가 아닌 경우"),
             @ApiResponse(responseCode = "404", description = "받는 계좌 없음")
     })
+    @Idempotent
     @PostMapping("/transfer")
     public ResponseEntity<Map<String, String>> transfer(
             @Valid @RequestBody TransferRequest request) {

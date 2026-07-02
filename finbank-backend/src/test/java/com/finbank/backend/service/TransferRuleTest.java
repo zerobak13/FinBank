@@ -13,26 +13,32 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.Collections;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
-import org.mockito.junit.jupiter.MockitoSettings;
-import org.mockito.quality.Strictness;
 
-
+/**
+ * AccountService.transfer()는 이제 "검증 + 락 획득 + 실행 위임"만 담당한다.
+ * 실제 잔액 차감/적립/로그 저장은 {@link TransferExecutor}로 분리됐으므로
+ * (락 획득 이후 새 트랜잭션을 열기 위함 — REPEATABLE READ 스냅샷 문제 회피),
+ * 그 쪽 책임은 {@link TransferExecutorTest}에서 검증한다.
+ */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-
 class TransferRuleTest {
 
     private static final String TEST_EMAIL = "test@test.com";
@@ -41,21 +47,32 @@ class TransferRuleTest {
     @Mock AccountRepository accountRepository;
     @Mock TransactionLogRepository transactionLogRepository;
 
+    // Redisson 분산 락 — 테스트에서는 항상 락 획득에 성공하도록 모킹
+    @Mock RedissonClient redissonClient;
+    @Mock RLock lock;
+    @Mock RLock multiLock;
+
+    // 실제 차감/적립/저장은 위임만 되는지 확인할 대상이므로 mock으로 대체
+    @Mock TransferExecutor transferExecutor;
+
     @InjectMocks AccountService accountService;
 
     private Member currentMember;
 
     @BeforeEach
-    void setUpAuth() {
-        // SecurityContext 세팅
+    void setUpAuth() throws InterruptedException {
         UsernamePasswordAuthenticationToken auth =
                 new UsernamePasswordAuthenticationToken(TEST_EMAIL, null, Collections.emptyList());
         SecurityContextHolder.getContext().setAuthentication(auth);
 
-        // 현재 로그인 사용자(Member) Mock
         currentMember = mock(Member.class);
         when(currentMember.getId()).thenReturn(1L);
         when(memberRepository.findByEmail(TEST_EMAIL)).thenReturn(Optional.of(currentMember));
+
+        when(redissonClient.getLock(any(String.class))).thenReturn(lock);
+        when(redissonClient.getMultiLock(any(RLock.class), any(RLock.class))).thenReturn(multiLock);
+        when(multiLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(multiLock.isHeldByCurrentThread()).thenReturn(true);
     }
 
     @AfterEach
@@ -63,7 +80,7 @@ class TransferRuleTest {
         SecurityContextHolder.clearContext();
     }
 
-    private Account mockAccount(Long id, Long ownerId, String accountNumber, long balance, boolean locked) {
+    private Account mockAccount(Long id, Long ownerId, String accountNumber) {
         Account acc = mock(Account.class);
         Member owner = mock(Member.class);
 
@@ -71,8 +88,6 @@ class TransferRuleTest {
         when(acc.getId()).thenReturn(id);
         when(acc.getMember()).thenReturn(owner);
         when(acc.getAccountNumber()).thenReturn(accountNumber);
-        when(acc.getBalance()).thenReturn(balance);
-        when(acc.isLocked()).thenReturn(locked);
 
         return acc;
     }
@@ -80,114 +95,100 @@ class TransferRuleTest {
     @Test
     @DisplayName("받는 계좌가 없으면 NotFoundException")
     void transfer_toAccountNotFound_throwsNotFound() {
-        Account from = mockAccount(10L, 1L, "111-111", 100_000L, false);
+        Account from = mockAccount(10L, 1L, "111-111");
 
-        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(from));
-        when(accountRepository.findWithLockingByAccountNumber("222-222")).thenReturn(Optional.empty());
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(from));
+        when(accountRepository.findByAccountNumber("222-222")).thenReturn(Optional.empty());
 
         TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
 
         assertThrows(NotFoundException.class, () -> accountService.transfer(req));
-        verify(transactionLogRepository, never()).save(any());
+        verify(transferExecutor, never()).execute(any(), any(), anyLong());
     }
 
     @Test
     @DisplayName("본인 계좌가 아니면 BusinessException")
     void transfer_notMyAccount_throwsBusiness() {
-        Account from = mockAccount(10L, 999L, "111-111", 100_000L, false); // ownerId != currentMemberId(1)
-        Account to = mockAccount(20L, 2L, "222-222", 0L, false);
+        Account from = mockAccount(10L, 999L, "111-111"); // ownerId != currentMemberId(1)
+        Account to = mockAccount(20L, 2L, "222-222");
 
-        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(from));
-        when(accountRepository.findWithLockingByAccountNumber("222-222")).thenReturn(Optional.of(to));
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(from));
+        when(accountRepository.findByAccountNumber("222-222")).thenReturn(Optional.of(to));
 
         TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
 
         BusinessException ex = assertThrows(BusinessException.class, () -> accountService.transfer(req));
         assertTrue(ex.getMessage().contains("본인 계좌"));
 
-        verify(transactionLogRepository, never()).save(any());
-        verify(accountRepository, never()).save(any(Account.class));
+        verify(transferExecutor, never()).execute(any(), any(), anyLong());
     }
 
     @Test
     @DisplayName("같은 계좌번호로 이체하면 BusinessException")
     void transfer_sameAccountNumber_throwsBusiness() {
-        Account from = mockAccount(10L, 1L, "111-111", 100_000L, false);
-        Account to = mockAccount(20L, 2L, "111-111", 0L, false); // same number
+        Account from = mockAccount(10L, 1L, "111-111");
+        Account to = mockAccount(10L, 2L, "111-111"); // same id/number as from
 
-        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(from));
-        when(accountRepository.findWithLockingByAccountNumber("111-111")).thenReturn(Optional.of(to));
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(from));
+        when(accountRepository.findByAccountNumber("111-111")).thenReturn(Optional.of(to));
 
         TransferRequest req = new TransferRequest(10L, "111-111", 10_000L);
 
         BusinessException ex = assertThrows(BusinessException.class, () -> accountService.transfer(req));
         assertTrue(ex.getMessage().contains("같은 계좌"));
 
-        verify(transactionLogRepository, never()).save(any());
-        verify(accountRepository, never()).save(any(Account.class));
+        verify(transferExecutor, never()).execute(any(), any(), anyLong());
     }
 
     @Test
-    @DisplayName("잠금 계좌가 있으면 BusinessException")
-    void transfer_lockedAccount_throwsBusiness() {
-        Account from = mockAccount(10L, 1L, "111-111", 100_000L, true); // locked
-        Account to = mockAccount(20L, 2L, "222-222", 0L, false);
+    @DisplayName("이체 금액이 0 이하면 BusinessException")
+    void transfer_invalidAmount_throwsBusiness() {
+        Account from = mockAccount(10L, 1L, "111-111");
+        Account to = mockAccount(20L, 2L, "222-222");
 
-        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(from));
-        when(accountRepository.findWithLockingByAccountNumber("222-222")).thenReturn(Optional.of(to));
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(from));
+        when(accountRepository.findByAccountNumber("222-222")).thenReturn(Optional.of(to));
+
+        TransferRequest req = new TransferRequest(10L, "222-222", 0L);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> accountService.transfer(req));
+        assertTrue(ex.getMessage().contains("0보다"));
+
+        verify(transferExecutor, never()).execute(any(), any(), anyLong());
+    }
+
+    @Test
+    @DisplayName("락 획득에 실패하면 BusinessException")
+    void transfer_lockAcquireFails_throwsBusiness() throws InterruptedException {
+        Account from = mockAccount(10L, 1L, "111-111");
+        Account to = mockAccount(20L, 2L, "222-222");
+
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(from));
+        when(accountRepository.findByAccountNumber("222-222")).thenReturn(Optional.of(to));
+        when(multiLock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(false);
 
         TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
 
         BusinessException ex = assertThrows(BusinessException.class, () -> accountService.transfer(req));
-        assertTrue(ex.getMessage().contains("잠금"));
+        assertTrue(ex.getMessage().contains("다른 요청"));
 
-        verify(transactionLogRepository, never()).save(any());
-        verify(accountRepository, never()).save(any(Account.class));
+        verify(transferExecutor, never()).execute(any(), any(), anyLong());
     }
 
     @Test
-    @DisplayName("잔액 부족이면 BusinessException")
-    void transfer_insufficientBalance_throwsBusiness() {
-        Account from = mockAccount(10L, 1L, "111-111", 5_000L, false);
-        Account to = mockAccount(20L, 2L, "222-222", 0L, false);
+    @DisplayName("검증을 통과하면 락을 잡고 TransferExecutor에 위임한 뒤 락을 해제한다")
+    void transfer_success_delegatesToExecutorAndUnlocks() {
+        Account from = mockAccount(10L, 1L, "111-111");
+        Account to = mockAccount(20L, 2L, "222-222");
 
-        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(from));
-        when(accountRepository.findWithLockingByAccountNumber("222-222")).thenReturn(Optional.of(to));
-
-        TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
-
-        BusinessException ex = assertThrows(BusinessException.class, () -> accountService.transfer(req));
-        assertTrue(ex.getMessage().contains("잔액"));
-
-        verify(transactionLogRepository, never()).save(any());
-        verify(accountRepository, never()).save(any(Account.class));
-    }
-
-    @Test
-    @DisplayName("성공 시에는 계좌 save 2번 + 로그 save 2번 호출")
-    void transfer_success_callsSaves() {
-        // 성공 케이스는 “규칙 테스트의 완성도” 올려줌 (예외만 있으면 아쉬워서 1개만 추가)
-        Account from = mockAccount(10L, 1L, "111-111", 100_000L, false);
-        Account to = mockAccount(20L, 2L, "222-222", 0L, false);
-
-        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(from));
-        when(accountRepository.findWithLockingByAccountNumber("222-222")).thenReturn(Optional.of(to));
-
-        // withdraw/deposit는 실제 메서드 호출될 수 있으니(stub) 그냥 void 처리
-        doNothing().when(from).withdraw(10_000L);
-        doNothing().when(to).deposit(10_000L);
+        when(accountRepository.findById(10L)).thenReturn(Optional.of(from));
+        when(accountRepository.findByAccountNumber("222-222")).thenReturn(Optional.of(to));
 
         TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
 
         assertDoesNotThrow(() -> accountService.transfer(req));
 
-        // 호출 순서도 체크하면 “완성도” 확 올라감
-        InOrder inOrder = inOrder(accountRepository, transactionLogRepository);
-        inOrder.verify(accountRepository).save(from);
-        inOrder.verify(accountRepository).save(to);
-        inOrder.verify(transactionLogRepository, times(2)).save(any());
-
-        verify(accountRepository, times(2)).save(any(Account.class));
-        verify(transactionLogRepository, times(2)).save(any());
+        verify(transferExecutor, times(1)).execute(10L, 20L, 10_000L);
+        verify(multiLock, times(1)).unlock();
     }
 }
