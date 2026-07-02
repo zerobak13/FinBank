@@ -125,8 +125,9 @@ public class AccountService {
 
         Member member = getCurrentMember();
 
-
-        Account account = accountRepository.findById(accountId)
+        // 동시 입금 시 lost update 방지를 위해 비관적 락으로 조회한다.
+        // (이 조회가 계좌의 첫 조회이므로 항상 커밋된 최신 잔액을 읽는다.)
+        Account account = accountRepository.findWithLockingById(accountId)
                 .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
         //본인 계좌 체크
         if (!account.getMember().getId().equals(member.getId())) {
@@ -152,7 +153,9 @@ public class AccountService {
 
         Member member = getCurrentMember();
 
-        Account account = accountRepository.findById(accountId)
+        // 동시 출금 시 lost update 방지를 위해 비관적 락으로 조회한다.
+        // (이 조회가 계좌의 첫 조회이므로 항상 커밋된 최신 잔액을 읽는다.)
+        Account account = accountRepository.findWithLockingById(accountId)
                 .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
         //본인 계좌 체크
         if (!account.getMember().getId().equals(member.getId())) {
