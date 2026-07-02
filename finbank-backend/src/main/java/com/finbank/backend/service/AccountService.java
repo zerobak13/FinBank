@@ -6,6 +6,7 @@ import com.finbank.backend.domain.TransactionLog;
 import com.finbank.backend.domain.TransactionType;
 import com.finbank.backend.dto.*;
 import com.finbank.backend.exception.BusinessException;
+import com.finbank.backend.exception.ForbiddenException;
 import com.finbank.backend.exception.NotFoundException;
 import com.finbank.backend.repository.AccountRepository;
 import com.finbank.backend.repository.MemberRepository;
@@ -82,7 +83,7 @@ public class AccountService {
                 .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
 
         if (!account.getMember().getId().equals(member.getId())) {
-            throw new BusinessException("본인 계좌만 조회할 수 있습니다.");
+            throw new ForbiddenException("본인 계좌만 조회할 수 있습니다.");
         }
 
         return toSummary(account);
@@ -96,7 +97,7 @@ public class AccountService {
                 .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
 
         if (!account.getMember().getId().equals(member.getId())) {
-            throw new BusinessException("본인 계좌만 조회할 수 있습니다.");
+            throw new ForbiddenException("본인 계좌만 조회할 수 있습니다.");
         }
 
         Pageable pageable = PageRequest.of(
@@ -131,7 +132,7 @@ public class AccountService {
                 .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
         //본인 계좌 체크
         if (!account.getMember().getId().equals(member.getId())) {
-            throw new BusinessException("본인 계좌만 입금할 수 있습니다.");
+            throw new ForbiddenException("본인 계좌만 입금할 수 있습니다.");
         }
 
         // 잔액 증가
@@ -159,7 +160,7 @@ public class AccountService {
                 .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
         //본인 계좌 체크
         if (!account.getMember().getId().equals(member.getId())) {
-            throw new BusinessException("본인 계좌만 출금할 수 있습니다.");
+            throw new ForbiddenException("본인 계좌만 출금할 수 있습니다.");
         }
 
         if (account.getBalance() < amount) {
@@ -224,7 +225,7 @@ public class AccountService {
         Account to   = firstLocked.getId().equals(toId)   ? firstLocked : secondLocked;
 
         if (!from.getMember().getId().equals(member.getId())) {
-            throw new BusinessException("본인 계좌에서만 이체할 수 있습니다.");
+            throw new ForbiddenException("본인 계좌에서만 이체할 수 있습니다.");
         }
 
         if (from.isLocked() || to.isLocked()) {

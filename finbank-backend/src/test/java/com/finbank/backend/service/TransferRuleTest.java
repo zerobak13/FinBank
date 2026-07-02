@@ -4,6 +4,7 @@ import com.finbank.backend.domain.Account;
 import com.finbank.backend.domain.Member;
 import com.finbank.backend.dto.TransferRequest;
 import com.finbank.backend.exception.BusinessException;
+import com.finbank.backend.exception.ForbiddenException;
 import com.finbank.backend.exception.NotFoundException;
 import com.finbank.backend.repository.AccountRepository;
 import com.finbank.backend.repository.MemberRepository;
@@ -106,8 +107,8 @@ class TransferRuleTest {
     }
 
     @Test
-    @DisplayName("본인 계좌가 아니면 BusinessException")
-    void transfer_notMyAccount_throwsBusiness() {
+    @DisplayName("본인 계좌가 아니면 ForbiddenException")
+    void transfer_notMyAccount_throwsForbidden() {
         Account from = mockAccount(10L, 999L, "111-111", 100_000L, false); // ownerId != currentMemberId(1)
         Account to = mockAccount(20L, 2L, "222-222", 0L, false);
 
@@ -115,7 +116,7 @@ class TransferRuleTest {
 
         TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
 
-        BusinessException ex = assertThrows(BusinessException.class, () -> accountService.transfer(req));
+        ForbiddenException ex = assertThrows(ForbiddenException.class, () -> accountService.transfer(req));
         assertTrue(ex.getMessage().contains("본인 계좌"));
 
         verify(transactionLogRepository, never()).save(any());
