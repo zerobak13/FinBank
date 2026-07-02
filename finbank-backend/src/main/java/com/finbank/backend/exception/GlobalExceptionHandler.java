@@ -9,6 +9,10 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
+/**
+ * 전역 예외 처리기. 서비스에서 던진 예외를 일관된 ApiError 응답과 적절한 HTTP 상태코드로 변환한다.
+ * 404(NotFound) / 403(Forbidden) / 400(Business·Validation) / 500(그 외)로 매핑한다.
+ */
 @ControllerAdvice
 public class GlobalExceptionHandler {
 

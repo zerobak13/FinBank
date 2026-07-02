@@ -11,10 +11,16 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * 계좌(accounts) 테이블 접근 리포지토리.
+ * 동시성 제어를 위한 비관적 락 조회와, 캐시 오염을 피하기 위한 ID 프로젝션 조회를 제공한다.
+ */
 public interface AccountRepository extends JpaRepository<Account, Long> {
 
+    /** 특정 회원의 전체 계좌 목록 */
     List<Account> findByMember(Member member);
 
+    /** 계좌번호 존재 여부 (계좌번호 생성 시 중복 검사) */
     boolean existsByAccountNumber(String accountNumber);
 
     /**
@@ -26,6 +32,7 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     @Query("select a.id from Account a where a.accountNumber = :accountNumber")
     Optional<Long> findIdByAccountNumber(@Param("accountNumber") String accountNumber);
 
+    /** 비관적 쓰기 락(SELECT ... FOR UPDATE)으로 계좌 조회 — 입출금·이체의 동시성 제어에 사용 */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Account> findWithLockingById(Long id);
 }

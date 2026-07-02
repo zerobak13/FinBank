@@ -25,21 +25,25 @@ import java.util.UUID;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RefreshToken {
 
+    /** 토큰 PK (자동 증가) */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // 회원 1명당 토큰 1개 유지 (재로그인 시 덮어씀)
+    /** 소유 회원 — 회원 1명당 토큰 1개만 유지(유니크). 재로그인 시 덮어쓴다. */
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "member_id", nullable = false, unique = true)
     private Member member;
 
+    /** 토큰 값 (UUID v4 불투명 문자열, 36자) */
     @Column(nullable = false, unique = true, length = 36)
     private String token;
 
+    /** 만료 시각 (발급 후 7일) */
     @Column(nullable = false)
     private LocalDateTime expiresAt;
 
+    /** 발급 시각 */
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 

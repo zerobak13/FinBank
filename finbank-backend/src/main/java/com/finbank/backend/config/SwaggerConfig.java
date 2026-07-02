@@ -9,6 +9,10 @@ import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/**
+ * Swagger(OpenAPI) 문서 설정. API 메타정보와 JWT Bearer 인증 스킴을 등록해
+ * Swagger UI에서 Authorize로 토큰을 넣고 API를 테스트할 수 있게 한다.
+ */
 @Configuration
 public class SwaggerConfig {
 

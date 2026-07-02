@@ -9,8 +9,12 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
+/**
+ * Refresh Token(refresh_tokens) 테이블 접근 리포지토리.
+ */
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long> {
 
+    /** 토큰 값으로 조회 (재발급·로그아웃 시 사용) */
     Optional<RefreshToken> findByToken(String token);
 
     /**

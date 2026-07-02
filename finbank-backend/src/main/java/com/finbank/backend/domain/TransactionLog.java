@@ -21,33 +21,40 @@ import org.hibernate.type.SqlTypes;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class TransactionLog {
 
+    /** 로그 PK (자동 증가) */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Enum으로 매핑하되 DB 컬럼 타입은 VARCHAR로 저장한다.
+    /** 거래 유형(DEPOSIT/WITHDRAW/TRANSFER_IN/TRANSFER_OUT). Enum이지만 DB에는 VARCHAR로 저장한다. */
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, length = 20)
     private TransactionType type;
 
+    /** 출금(보내는) 계좌 — 입금(DEPOSIT)에서는 null */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "from_account_id")
     private Account fromAccount;
 
+    /** 입금(받는) 계좌 — 출금(WITHDRAW)에서는 null */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "to_account_id")
     private Account toAccount;
 
+    /** 거래 금액 (원 단위 정수) */
     @Column(nullable = false)
     private Long amount;
 
+    /** 이 거래 직후의 잔액 — 시점별 잔액 이력 추적용 */
     @Column(nullable = false)
     private Long balanceAfter;
 
+    /** 거래 발생 시각 */
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    /** 거래 설명(메모) */
     @Column(length = 255)
     private String description;
 

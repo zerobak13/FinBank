@@ -12,8 +12,16 @@ import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 
+/**
+ * 거래 로그(transaction_logs) 테이블 접근 리포지토리.
+ */
 public interface TransactionLogRepository extends JpaRepository<TransactionLog, Long> {
 
+    /**
+     * 특정 계좌 관점의 거래 내역을 페이징 조회한다.
+     * 내가 보낸 거래(fromAccount + 출금/이체출금)와 내가 받은 거래(toAccount + 입금/이체입금)를
+     * 한 번에 합쳐서 가져온다.
+     */
     @Query("""
     select t
     from TransactionLog t

@@ -5,6 +5,10 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
+/**
+ * 이체 요청 바디 (POST /api/accounts/transfer).
+ * 출금 계좌 ID, 받는 계좌번호, 이체 금액을 담는다. 각 필드 설명은 @Schema 참고.
+ */
 @Schema(description = "이체 요청")
 public class TransferRequest {
 

@@ -17,6 +17,10 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 계좌 API 컨트롤러. 계좌 생성/조회와 입금·출금·이체 엔드포인트를 제공한다.
+ * 모든 요청에 JWT 인증이 필요하다.
+ */
 @RestController
 @RequestMapping("/api/accounts")
 @Tag(name = "계좌 (Account)", description = "계좌 생성, 조회, 입출금, 이체 API. 모든 요청에 JWT 인증이 필요합니다.")

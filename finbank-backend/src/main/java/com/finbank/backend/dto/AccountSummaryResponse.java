@@ -2,6 +2,10 @@ package com.finbank.backend.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+/**
+ * 계좌 요약 응답. 계좌 목록/상세 조회와 계좌 생성 결과로 반환된다.
+ * 각 필드 설명은 @Schema 참고.
+ */
 @Schema(description = "계좌 요약 정보")
 public class AccountSummaryResponse {
 
