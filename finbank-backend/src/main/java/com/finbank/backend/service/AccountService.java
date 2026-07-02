@@ -20,8 +20,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 import java.util.stream.Collectors;
@@ -74,33 +72,6 @@ public class AccountService {
         return accounts.stream()
                 .map(this::toSummary)
                 .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
-    public AccountDetailResponse getAccountDetail(Long accountId) {
-        Member member = getCurrentMember();
-
-        Account account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
-
-        if (!account.getMember().getId().equals(member.getId())) {
-            throw new BusinessException("본인 계좌만 조회할 수 있습니다.");
-        }
-
-        List<TransactionLog> logs =
-                transactionLogRepository.findByAccountPerspective(
-                        account,
-                        List.of(TransactionType.WITHDRAW, TransactionType.TRANSFER_OUT),
-                        List.of(TransactionType.DEPOSIT, TransactionType.TRANSFER_IN),
-                        Pageable.unpaged()
-                ).getContent();
-
-        AccountSummaryResponse summary = toSummary(account);
-        List<TransactionLogResponse> txDtos = logs.stream()
-                .map(this::toTxDto)
-                .collect(Collectors.toList());
-
-        return new AccountDetailResponse(summary, txDtos);
     }
 
     @Transactional(readOnly = true)
@@ -201,85 +172,57 @@ public class AccountService {
                 TransactionLog.withdraw(account, amount, account.getBalance())
         );
     }
-//
-//    @Transactional
-//    public void transfer(TransferRequest request) {
-//        Member member = getCurrentMember();
-//
-//        Account from = accountRepository.findWithLockingById(request.getFromAccountId())
-//                .orElseThrow(() -> new NotFoundException("From account not found"));
-//
-//        if (!from.getMember().getId().equals(member.getId())) {
-//            throw new BusinessException("본인 계좌에서만 이체할 수 있습니다.");
-//        }
-//
-//        Account to = accountRepository.findWithLockingByAccountNumber(request.getToAccountNumber())
-//                .orElseThrow(() -> new NotFoundException("받는 계좌를 찾을 수 없습니다."));
-//
-//        if (from.getAccountNumber().equals(to.getAccountNumber())) {
-//            throw new BusinessException("같은 계좌로는 이체할 수 없습니다.");
-//        }
-//
-//        if (from.isLocked() || to.isLocked()) {
-//            throw new BusinessException("잠금된 계좌가 있습니다.");
-//        }
-//
-//        if (from.getBalance() < request.getAmount()) {
-//            throw new BusinessException("잔액이 부족합니다.");
-//        }
-//
-//        //잔액 이동
-//        from.withdraw(request.getAmount());
-//        to.deposit(request.getAmount());
-//
-//        accountRepository.save(from);
-//        accountRepository.save(to);
-//
-//        //이체 로그
-//        transactionLogRepository.save(
-//                TransactionLog.transferOut(from, to, request.getAmount(), from.getBalance())
-//        );
-//        transactionLogRepository.save(
-//                TransactionLog.transferIn(from, to, request.getAmount(), to.getBalance())
-//        );
-//    }
 
+    /**
+     * 계좌 간 이체.
+     *
+     * <p><b>동시성 제어 — 비관적 락(PESSIMISTIC_WRITE)</b><br>
+     * 두 계좌를 항상 ID 오름차순으로 잠가 데드락을 방지한다.</p>
+     *
+     * <p><b>중요: 락 조회를 각 행의 "첫 조회"로 수행한다.</b><br>
+     * 락 없이 일반 조회({@code findById} 등)로 먼저 읽으면 엔티티가
+     * 영속성 컨텍스트(1차 캐시)에 적재된다. 이후 {@code findWithLockingById}로 락을
+     * 걸어도 Hibernate는 이미 캐시에 있는 엔티티의 값을 다시 읽지 않으므로,
+     * 락을 기다렸다 통과한 스레드가 <b>락 이전의 낡은 잔액</b>을 보게 되어
+     * 비관적 락이 무력화되고 lost update가 발생한다.<br>
+     * 이를 막기 위해 잔액이 걸린 두 계좌는 오직 락 조회로만 적재한다.
+     * (받는 계좌는 락 순서 결정을 위해 ID만 프로젝션으로 조회한다.)</p>
+     */
     @Transactional
     public void transfer(TransferRequest request) {
         Member member = getCurrentMember();
-
-        // 1. 계좌 조회는 우선 락 없이 수행
-        Account fromAccount = accountRepository.findById(request.getFromAccountId())
-                .orElseThrow(() -> new NotFoundException("From account not found"));
-
-        if (!fromAccount.getMember().getId().equals(member.getId())) {
-            throw new BusinessException("본인 계좌에서만 이체할 수 있습니다.");
-        }
-
-        Account toAccount = accountRepository.findByAccountNumber(request.getToAccountNumber())
-                .orElseThrow(() -> new NotFoundException("받는 계좌를 찾을 수 없습니다."));
-
-        if (fromAccount.getId().equals(toAccount.getId())) {
-            throw new BusinessException("같은 계좌로는 이체할 수 없습니다.");
-        }
 
         if (request.getAmount() <= 0) {
             throw new BusinessException("이체 금액은 0보다 커야 합니다.");
         }
 
-        // 2. 락 획득 순서를 ID 기준으로 통일
-        Long firstLockId = Math.min(fromAccount.getId(), toAccount.getId());
-        Long secondLockId = Math.max(fromAccount.getId(), toAccount.getId());
+        Long fromId = request.getFromAccountId();
+
+        // 받는 계좌는 ID만 조회 (엔티티를 캐시에 올리지 않아 이후 락 조회가 항상 최신 값을 읽게 함)
+        Long toId = accountRepository.findIdByAccountNumber(request.getToAccountNumber())
+                .orElseThrow(() -> new NotFoundException("받는 계좌를 찾을 수 없습니다."));
+
+        if (fromId.equals(toId)) {
+            throw new BusinessException("같은 계좌로는 이체할 수 없습니다.");
+        }
+
+        // 데드락 방지를 위해 항상 ID 오름차순으로 락을 획득한다.
+        // 이 락 조회가 두 계좌의 첫 조회이므로 항상 커밋된 최신 잔액을 읽는다.
+        Long firstLockId = Math.min(fromId, toId);
+        Long secondLockId = Math.max(fromId, toId);
 
         Account firstLocked = accountRepository.findWithLockingById(firstLockId)
-                .orElseThrow(() -> new NotFoundException("첫 번째 계좌를 찾을 수 없습니다."));
+                .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다."));
 
         Account secondLocked = accountRepository.findWithLockingById(secondLockId)
-                .orElseThrow(() -> new NotFoundException("두 번째 계좌를 찾을 수 없습니다."));
+                .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다."));
 
-        // 3. 실제 from / to 재매핑
-        Account from = firstLocked.getId().equals(fromAccount.getId()) ? firstLocked : secondLocked;
-        Account to = firstLocked.getId().equals(toAccount.getId()) ? firstLocked : secondLocked;
+        Account from = firstLocked.getId().equals(fromId) ? firstLocked : secondLocked;
+        Account to   = firstLocked.getId().equals(toId)   ? firstLocked : secondLocked;
+
+        if (!from.getMember().getId().equals(member.getId())) {
+            throw new BusinessException("본인 계좌에서만 이체할 수 있습니다.");
+        }
 
         if (from.isLocked() || to.isLocked()) {
             throw new BusinessException("잠금된 계좌가 있습니다.");
@@ -289,7 +232,7 @@ public class AccountService {
             throw new BusinessException("잔액이 부족합니다.");
         }
 
-        // 4. 잔액 이동
+        // 잔액 이동
         from.withdraw(request.getAmount());
         to.deposit(request.getAmount());
 
