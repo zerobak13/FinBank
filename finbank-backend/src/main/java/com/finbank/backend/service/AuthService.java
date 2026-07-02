@@ -15,6 +15,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 인증·토큰 관리를 담당하는 서비스.
+ *
+ * <p>회원 가입/로그인 시 Access Token(JWT)과 Refresh Token(DB 저장 UUID)을 발급하고,
+ * Refresh Token으로 Access Token을 재발급(Token Rotation)하며, 로그아웃 시 토큰을 폐기한다.
+ * Refresh Token을 DB에 저장하는 이유는 탈취 시 서버에서 즉시 무효화하기 위함이다.</p>
+ */
 @Service
 public class AuthService {
 

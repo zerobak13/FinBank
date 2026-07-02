@@ -13,6 +13,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+/**
+ * Spring Security 설정.
+ *
+ * <p>세션을 사용하지 않는 Stateless(JWT) 구조로 구성한다. 인증 예외 경로
+ * (회원가입/로그인/토큰갱신/로그아웃, Swagger)를 제외한 모든 요청에 인증을 요구하고,
+ * JwtAuthenticationFilter를 인증 필터 앞단에 배치한다. 허용된 프론트엔드 도메인만 CORS로 허용한다.</p>
+ */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {

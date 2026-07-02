@@ -7,6 +7,11 @@ import lombok.AccessLevel;
 
 import java.time.LocalDateTime;
 
+/**
+ * 계좌 엔티티. 회원(Member) 1 : N 계좌 관계이며 잔액(balance)을 원 단위 정수로 보관한다.
+ * 잔액 변경은 도메인 메서드(deposit/withdraw)로만 이뤄지며 음수 잔액을 방지한다.
+ * (locked는 계좌 잠금 상태 플래그로, DB의 비관적 락과는 무관하다.)
+ */
 @Entity
 @Table(name = "accounts")
 @Getter

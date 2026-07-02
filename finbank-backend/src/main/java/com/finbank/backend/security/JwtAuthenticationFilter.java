@@ -14,6 +14,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.Collections;
 
+/**
+ * 요청마다 Authorization 헤더의 JWT를 검증해 SecurityContext에 인증 정보를 채우는 필터.
+ * JWT는 서명으로 자체 검증되므로 인증 단계에서 회원 DB 조회는 하지 않는다.
+ */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 

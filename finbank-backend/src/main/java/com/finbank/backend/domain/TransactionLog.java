@@ -10,6 +10,11 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 
+/**
+ * 거래 로그(원장) 엔티티.
+ * 입금/출금/이체를 단일 테이블로 통합 관리하며, 거래 후 잔액(balanceAfter)을 함께 기록해
+ * 시점별 잔액 이력을 추적할 수 있다. 인스턴스는 정적 팩터리 메서드(deposit/withdraw/transferOut/transferIn)로만 생성한다.
+ */
 @Entity
 @Table(name = "transaction_logs")
 @Getter

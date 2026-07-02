@@ -25,6 +25,14 @@ import java.security.SecureRandom;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * 계좌 도메인 유스케이스를 담당하는 서비스.
+ *
+ * <p>계좌 개설·조회와 입금·출금·이체를 처리하며, 금융 거래의 핵심인
+ * 동시성 제어와 잔액 무결성을 책임진다. 잔액이 변경되는 모든 연산은
+ * {@code @Transactional} 범위 안에서 비관적 락(PESSIMISTIC_WRITE)으로 보호되고,
+ * 락 조회를 각 계좌의 "첫 조회"로 수행해 1차 캐시로 인한 stale read를 방지한다.</p>
+ */
 @Service
 public class AccountService {
 
