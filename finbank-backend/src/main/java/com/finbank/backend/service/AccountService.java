@@ -243,7 +243,7 @@ public class AccountService {
         accountRepository.save(from);
         accountRepository.save(to);
 
-        // 5. 이체 로그
+        // 이체 로그
         transactionLogRepository.save(
                 TransactionLog.transferOut(from, to, request.getAmount(), from.getBalance())
         );
