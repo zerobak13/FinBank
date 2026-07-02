@@ -5,6 +5,7 @@ import com.finbank.backend.domain.Member;
 import com.finbank.backend.dto.TransferRequest;
 import com.finbank.backend.repository.AccountRepository;
 import com.finbank.backend.repository.MemberRepository;
+import com.finbank.backend.repository.RefreshTokenRepository;
 import com.finbank.backend.repository.TransactionLogRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,9 @@ class AccountServiceDeadlockTest {
 
     @Autowired
     private TransactionLogRepository transactionLogRepository;
+
+    @Autowired
+    private RefreshTokenRepository refreshTokenRepository;
 
     @Test
     @DisplayName("현재 transfer 구현은 반대 방향 동시 이체에서 데드락이 발생할 수 있다")
@@ -219,7 +223,9 @@ class AccountServiceDeadlockTest {
     }
 
     private void cleanup() {
+        // refresh_tokens는 members를 참조하므로 members보다 먼저 정리한다.
         transactionLogRepository.deleteAll();
+        refreshTokenRepository.deleteAll();
         accountRepository.deleteAll();
         memberRepository.deleteAll();
     }
