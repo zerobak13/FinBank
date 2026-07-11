@@ -28,11 +28,11 @@ export default function AccountDetail({ selected, loading, deposit, withdraw, tr
 
             <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl">
-                    <input type="number" value={dAmount} onChange={e => setDAmount(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 mb-2 text-sm" placeholder="입금액" />
+                    <input type="number" step="1000" min="0" value={dAmount} onChange={e => setDAmount(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 mb-2 text-sm" placeholder="입금액" />
                     <button onClick={() => { deposit(dAmount); setDAmount(""); }} disabled={loading} className="w-full bg-emerald-500 py-2 rounded text-xs font-bold">입금</button>
                 </div>
                 <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl">
-                    <input type="number" value={wAmount} onChange={e => setWAmount(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 mb-2 text-sm" placeholder="출금액" />
+                    <input type="number" step="1000" min="0" value={wAmount} onChange={e => setWAmount(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 mb-2 text-sm" placeholder="출금액" />
                     <button onClick={() => { withdraw(wAmount); setWAmount(""); }} disabled={loading} className="w-full bg-rose-500 py-2 rounded text-xs font-bold">출금</button>
                 </div>
             </div>
@@ -40,7 +40,7 @@ export default function AccountDetail({ selected, loading, deposit, withdraw, tr
             <form className="bg-slate-950 border border-slate-700 p-4 rounded-xl" onSubmit={e => { e.preventDefault(); transfer(toAcc, tAmount); setToAcc(""); setTAmount(""); }}>
                 <input value={toAcc} onChange={e => setToAcc(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 mb-2 text-sm" placeholder="받는 계좌번호" />
                 <div className="flex gap-2">
-                    <input type="number" value={tAmount} onChange={e => setTAmount(e.target.value)} className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-sm" placeholder="금액" />
+                    <input type="number" step="1000" min="0" value={tAmount} onChange={e => setTAmount(e.target.value)} className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-sm" placeholder="금액" />
                     <button type="submit" disabled={loading} className="bg-blue-500 px-6 rounded font-bold text-xs">이체</button>
                 </div>
             </form>
