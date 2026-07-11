@@ -4,6 +4,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
+/**
+ * 로그인 요청 바디 (POST /api/auth/login). 이메일/비밀번호를 받는다.
+ */
 @Schema(description = "로그인 요청")
 public class LoginRequest {
 

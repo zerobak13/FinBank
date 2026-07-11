@@ -3,6 +3,9 @@ package com.finbank.backend.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Min;
 
+/**
+ * 계좌 생성 요청 바디 (POST /api/accounts). 초기 입금액만 받는다.
+ */
 @Schema(description = "계좌 생성 요청")
 public class AccountCreateRequest {
 

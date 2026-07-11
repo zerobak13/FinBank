@@ -3,6 +3,10 @@ package com.finbank.backend.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 
+/**
+ * 거래 내역 응답. 거래 로그 1건을 클라이언트에 노출하는 형태다.
+ * 각 필드 설명은 @Schema 참고.
+ */
 @Schema(description = "거래 내역 응답")
 public class TransactionLogResponse {
 

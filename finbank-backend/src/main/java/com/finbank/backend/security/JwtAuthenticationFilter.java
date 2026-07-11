@@ -1,8 +1,6 @@
 package com.finbank.backend.security;
 
 import com.finbank.backend.config.JwtTokenProvider;
-import com.finbank.backend.domain.Member;
-import com.finbank.backend.repository.MemberRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,16 +14,17 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.Collections;
 
+/**
+ * 요청마다 Authorization 헤더의 JWT를 검증해 SecurityContext에 인증 정보를 채우는 필터.
+ * JWT는 서명으로 자체 검증되므로 인증 단계에서 회원 DB 조회는 하지 않는다.
+ */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
-    private final MemberRepository memberRepository;
 
-    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider,
-                                   MemberRepository memberRepository) {
+    public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider) {
         this.jwtTokenProvider = jwtTokenProvider;
-        this.memberRepository = memberRepository;
     }
 
     @Override
@@ -42,22 +41,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         // 2) JWT 처리
+        // JWT는 서명으로 자체 검증되므로 인증 단계에서 회원 존재 여부를 DB로 확인하지 않는다.
+        // (요청마다 발생하던 findByEmail 제거) 실제 회원 엔티티가 필요한 지점(getCurrentMember)에서만 조회한다.
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
-            if (jwtTokenProvider.validateToken(token)) {
-                String email = jwtTokenProvider.getEmail(token);
-                Member member = memberRepository.findByEmail(email).orElse(null);
-                if (member != null &&
-                        SecurityContextHolder.getContext().getAuthentication() == null) {
+            if (jwtTokenProvider.validateToken(token)
+                    && SecurityContextHolder.getContext().getAuthentication() == null) {
 
-                    UsernamePasswordAuthenticationToken auth =
-                            new UsernamePasswordAuthenticationToken(
-                                    email, null, Collections.emptyList());
-                    auth.setDetails(
-                            new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(auth);
-                }
+                String email = jwtTokenProvider.getEmail(token);
+
+                UsernamePasswordAuthenticationToken auth =
+                        new UsernamePasswordAuthenticationToken(
+                                email, null, Collections.emptyList());
+                auth.setDetails(
+                        new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(auth);
             }
         }
 

@@ -11,10 +11,16 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 계좌 API 컨트롤러. 계좌 생성/조회와 입금·출금·이체 엔드포인트를 제공한다.
+ * 모든 요청에 JWT 인증이 필요하다.
+ */
 @RestController
 @RequestMapping("/api/accounts")
 @Tag(name = "계좌 (Account)", description = "계좌 생성, 조회, 입출금, 이체 API. 모든 요청에 JWT 인증이 필요합니다.")
@@ -29,13 +35,18 @@ public class AccountController {
 
     @Operation(summary = "계좌 생성", description = "새 계좌를 개설합니다. 초기 입금액(initialDeposit)을 0 이상으로 설정할 수 있습니다.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "계좌 생성 성공"),
+            @ApiResponse(responseCode = "201", description = "계좌 생성 성공 (Location 헤더에 생성된 계좌 URI 포함)"),
             @ApiResponse(responseCode = "401", description = "인증 토큰 없음 또는 만료")
     })
     @PostMapping
     public ResponseEntity<AccountSummaryResponse> createAccount(
             @Valid @RequestBody AccountCreateRequest request) {
-        return ResponseEntity.ok(accountService.createAccount(request));
+        AccountSummaryResponse created = accountService.createAccount(request);
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(created.getId())
+                .toUri();
+        return ResponseEntity.created(location).body(created);
     }
 
     @Operation(summary = "내 계좌 목록 조회", description = "로그인한 사용자의 전체 계좌 목록을 반환합니다.")

@@ -4,49 +4,57 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.time.LocalDateTime;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 
+/**
+ * 거래 로그(원장) 엔티티.
+ * 입금/출금/이체를 단일 테이블로 통합 관리하며, 거래 후 잔액(balanceAfter)을 함께 기록해
+ * 시점별 잔액 이력을 추적할 수 있다. 인스턴스는 정적 팩터리 메서드(deposit/withdraw/transferOut/transferIn)로만 생성한다.
+ */
 @Entity
 @Table(name = "transaction_logs")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class TransactionLog {
 
+    /** 로그 PK (자동 증가) */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-//    @Column(nullable = false, length = 20)
-//    private String type; // DEPOSIT, WITHDRAW, TRANSFER
+    /** 거래 유형(DEPOSIT/WITHDRAW/TRANSFER_IN/TRANSFER_OUT). Enum이지만 DB에는 VARCHAR로 저장한다. */
     @Enumerated(EnumType.STRING)
-    //이 필드는 Enum으로 매핑하되, JDBC(DB 컬럼 타입)는 VARCHAR로 쓰게함
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, length = 20)
     private TransactionType type;
 
-
+    /** 출금(보내는) 계좌 — 입금(DEPOSIT)에서는 null */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "from_account_id")
     private Account fromAccount;
 
+    /** 입금(받는) 계좌 — 출금(WITHDRAW)에서는 null */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "to_account_id")
     private Account toAccount;
 
+    /** 거래 금액 (원 단위 정수) */
     @Column(nullable = false)
     private Long amount;
 
+    /** 이 거래 직후의 잔액 — 시점별 잔액 이력 추적용 */
     @Column(nullable = false)
     private Long balanceAfter;
 
+    /** 거래 발생 시각 */
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    /** 거래 설명(메모) */
     @Column(length = 255)
     private String description;
 

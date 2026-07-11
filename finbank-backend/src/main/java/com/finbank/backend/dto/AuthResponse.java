@@ -2,6 +2,10 @@ package com.finbank.backend.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+/**
+ * 인증 응답. 로그인/회원가입/토큰 재발급 성공 시 반환되며
+ * Access Token, Refresh Token과 사용자 기본 정보(이메일/이름)를 담는다.
+ */
 @Schema(description = "인증 응답 (로그인/회원가입/토큰 재발급 성공 시 반환)")
 public class AuthResponse {
 

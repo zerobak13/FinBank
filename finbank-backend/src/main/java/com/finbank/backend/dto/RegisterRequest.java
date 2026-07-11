@@ -5,6 +5,9 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+/**
+ * 회원가입 요청 바디 (POST /api/auth/register). 이메일/이름/비밀번호를 받는다.
+ */
 @Schema(description = "회원가입 요청")
 public class RegisterRequest {
 

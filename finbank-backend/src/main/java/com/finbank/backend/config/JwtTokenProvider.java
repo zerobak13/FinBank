@@ -9,6 +9,10 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
+/**
+ * JWT Access Token의 발급과 검증을 담당한다.
+ * HS256 대칭키로 서명하며, 토큰 subject에는 회원 이메일만 담는다.
+ */
 @Component
 public class JwtTokenProvider {
 

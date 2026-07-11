@@ -15,6 +15,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
+/**
+ * 인증 API 컨트롤러. 회원가입/로그인/토큰 재발급/로그아웃 엔드포인트를 제공한다.
+ */
 @RestController
 @RequestMapping("/api/auth")
 @Tag(name = "인증 (Auth)", description = """
