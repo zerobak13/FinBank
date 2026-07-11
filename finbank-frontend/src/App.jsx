@@ -122,7 +122,7 @@ export default function App() {
               <h2 className="text-sm font-semibold mb-2">새 계좌 개설</h2>
               {auth ? (
                   <form onSubmit={createAccount}>
-                    <input type="number" value={initialDeposit} onChange={e => setInitialDeposit(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mb-2 text-sm" placeholder="초기 입금액" />
+                    <input type="number" step="1000" min="0" value={initialDeposit} onChange={e => setInitialDeposit(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mb-2 text-sm" placeholder="초기 입금액" />
                     <button type="submit" disabled={loading} className="w-full bg-emerald-500 py-2 rounded text-sm font-bold">개설하기</button>
                   </form>
               ) : <p className="text-xs text-slate-500">로그인 후 이용 가능합니다.</p>}
