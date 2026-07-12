@@ -25,7 +25,7 @@ export default function App() {
 
   const {
     accounts, selected, loading, setAccounts, setSelected,
-    setLoading, loadAccounts, selectAccount, refreshAfterTransaction
+    setLoading, loadAccounts, selectAccount, refreshAfterTransaction, refreshSilently
   } = useAccount(auth, notify, handleLogout);
 
   const [loginEmail, setLoginEmail] = useState(auth?.email || "");
@@ -35,6 +35,16 @@ export default function App() {
   const [initialDeposit, setInitialDeposit] = useState("");
 
   useEffect(() => { if (auth?.token) loadAccounts(); }, [auth?.token]);
+
+  // 창 포커스 복귀 + 20초 주기로 조용히 갱신 — 다른 계좌에서 이체를 받은 경우
+  // 수신자 화면은 스스로 알 수 없으므로 폴링으로 따라잡는다. (실서비스라면 WebSocket/SSE)
+  useEffect(() => {
+    if (!auth?.token) return;
+    const onFocus = () => refreshSilently();
+    window.addEventListener("focus", onFocus);
+    const timer = setInterval(refreshSilently, 20000);
+    return () => { window.removeEventListener("focus", onFocus); clearInterval(timer); };
+  }, [auth?.token, selected?.account?.id]);
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(""), 4000); return () => clearTimeout(t); }, [msg]);
 
   const handleLogin = async (e) => {

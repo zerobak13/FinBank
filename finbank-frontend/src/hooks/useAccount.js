@@ -88,9 +88,32 @@ export function useAccount(auth, notify, onLogout) {
         }
     };
 
+    /**
+     * 조용한 갱신 — 로딩 오버레이/토스트 없이 최신 상태만 반영.
+     * 창 포커스 복귀·주기 폴링에서 호출한다. (다른 계좌에서 이체를 "받았을 때"
+     * 수신자 화면은 스스로 알 수 없으므로, 이 방식으로 따라잡는다.)
+     */
+    const refreshSilently = async () => {
+        if (!auth?.token) return;
+        try {
+            const list = await accountApi.getAccounts();
+            setAccounts(list);
+            const id = selected?.account?.id;
+            if (id && list.some((a) => a.id === id)) {
+                const [account, txPage] = await Promise.all([
+                    accountApi.getAccountDetail(id),
+                    accountApi.getAccountTransactions(id, 0, 20),
+                ]);
+                setSelected(toSelected(account, txPage));
+            }
+        } catch {
+            // 백그라운드 갱신 실패는 조용히 무시 (다음 주기에 재시도)
+        }
+    };
+
     return {
         accounts, selected, loading,
         setAccounts, setSelected, setLoading,
-        loadAccounts, selectAccount, refreshAfterTransaction,
+        loadAccounts, selectAccount, refreshAfterTransaction, refreshSilently,
     };
 }
