@@ -36,16 +36,13 @@ class WithdrawConcurrencyTest {
     @Autowired MemberRepository memberRepository;
     @Autowired TransactionLogRepository transactionLogRepository;
     @Autowired RefreshTokenRepository refreshTokenRepository;
+    @Autowired com.finbank.backend.support.DatabaseCleaner cleaner;
 
     private static final String EMAIL = "withdraw-concurrency@test.com";
 
     @BeforeEach
     void setUp() {
-        // FK 순서에 맞춰 자식 테이블부터 정리 (refresh_tokens는 members 참조).
-        transactionLogRepository.deleteAllInBatch();
-        refreshTokenRepository.deleteAllInBatch();
-        accountRepository.deleteAllInBatch();
-        memberRepository.deleteAllInBatch();
+        cleaner.clean();
 
         Member member = new Member(EMAIL, "테스터", "password");
         memberRepository.saveAndFlush(member);

@@ -36,17 +36,13 @@ class AccountConcurrencyTest {
     @Autowired MemberRepository memberRepository;
     @Autowired TransactionLogRepository transactionLogRepository;
     @Autowired RefreshTokenRepository refreshTokenRepository;
+    @Autowired com.finbank.backend.support.DatabaseCleaner cleaner;
 
     private static final String EMAIL = "test@test.com";
 
     @BeforeEach
     void setUp() {
-        // FK 순서에 맞춰 자식 테이블부터 정리.
-        // refresh_tokens가 members를 참조하므로 members보다 먼저 비운다.
-        transactionLogRepository.deleteAllInBatch();
-        refreshTokenRepository.deleteAllInBatch();
-        accountRepository.deleteAllInBatch();
-        memberRepository.deleteAllInBatch();
+        cleaner.clean();
 
         Member member = new Member(EMAIL, "테스터", "password");
         memberRepository.saveAndFlush(member);

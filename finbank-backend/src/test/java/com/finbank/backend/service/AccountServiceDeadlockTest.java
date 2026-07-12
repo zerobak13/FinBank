@@ -42,6 +42,9 @@ class AccountServiceDeadlockTest {
     @Autowired
     private RefreshTokenRepository refreshTokenRepository;
 
+    @Autowired
+    private com.finbank.backend.support.DatabaseCleaner cleaner;
+
     @Test
     @DisplayName("현재 transfer 구현은 반대 방향 동시 이체에서 데드락이 발생할 수 있다")
     void deadlock_can_happen_with_current_transfer() throws Exception {
@@ -225,11 +228,7 @@ class AccountServiceDeadlockTest {
     }
 
     private void cleanup() {
-        // refresh_tokens는 members를 참조하므로 members보다 먼저 정리한다.
-        transactionLogRepository.deleteAll();
-        refreshTokenRepository.deleteAll();
-        accountRepository.deleteAll();
-        memberRepository.deleteAll();
+        cleaner.clean();
     }
 
     private record Scenario(

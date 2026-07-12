@@ -49,6 +49,7 @@ class LoanApplicationServiceTest {
     @Autowired MemberRepository memberRepository;
     @Autowired TransactionLogRepository transactionLogRepository;
     @Autowired RefreshTokenRepository refreshTokenRepository;
+    @Autowired com.finbank.backend.support.DatabaseCleaner cleaner;
 
     private static final String EMAIL = "loan@test.com";
     private LoanProduct product; // 원리금균등, 한도 5,000만
@@ -56,13 +57,7 @@ class LoanApplicationServiceTest {
 
     @BeforeEach
     void setUp() {
-        // FK 순서: 여신 자식 테이블부터 정리 (상품 시드는 유지)
-        loanAccountRepository.deleteAllInBatch();
-        loanApplicationRepository.deleteAllInBatch();
-        transactionLogRepository.deleteAllInBatch();
-        refreshTokenRepository.deleteAllInBatch();
-        accountRepository.deleteAllInBatch();
-        memberRepository.deleteAllInBatch();
+        cleaner.clean();
 
         member = memberRepository.saveAndFlush(new Member(EMAIL, "대출테스터", "password"));
         product = loanProductRepository.findByStatus(ProductStatus.ON_SALE).stream()
