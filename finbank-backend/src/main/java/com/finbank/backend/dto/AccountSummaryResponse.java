@@ -2,6 +2,8 @@ package com.finbank.backend.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.math.BigDecimal;
+
 /**
  * 계좌 요약 응답. 계좌 목록/상세 조회와 계좌 생성 결과로 반환된다.
  * 각 필드 설명은 @Schema 참고.
@@ -16,7 +18,7 @@ public class AccountSummaryResponse {
     private String accountNumber;
 
     @Schema(description = "현재 잔액 (원)", example = "100000")
-    private long balance;
+    private BigDecimal balance;
 
     @Schema(description = "계좌 잠금 여부", example = "false")
     private boolean locked;
@@ -27,7 +29,7 @@ public class AccountSummaryResponse {
     @Schema(description = "소유자 이름", example = "박제영")
     private String ownerName;
 
-    public AccountSummaryResponse(Long id, String accountNumber, long balance,
+    public AccountSummaryResponse(Long id, String accountNumber, BigDecimal balance,
                                   boolean locked, String ownerEmail, String ownerName) {
         this.id = id;
         this.accountNumber = accountNumber;
@@ -39,7 +41,7 @@ public class AccountSummaryResponse {
 
     public Long getId() { return id; }
     public String getAccountNumber() { return accountNumber; }
-    public long getBalance() { return balance; }
+    public BigDecimal getBalance() { return balance; }
     public boolean isLocked() { return locked; }
     public String getOwnerEmail() { return ownerEmail; }
     public String getOwnerName() { return ownerName; }
