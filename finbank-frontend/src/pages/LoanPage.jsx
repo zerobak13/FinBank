@@ -22,6 +22,16 @@ export default function LoanPage({ auth, loading, setLoading, notify }) {
     const [loans, setLoans] = useState([]);
     const [apiReady, setApiReady] = useState(false); // 대출 API 연동 여부
 
+    // 내 신청 이력 로드 (C3에서 실행된 대출 목록 API가 생기면 함께 합침)
+    const loadApplications = async () => {
+        try {
+            const apps = await loanApi.getMyApplications();
+            setLoans(apps ?? []);
+        } catch {
+            // 이력 조회 실패는 조용히 무시 (신청 기능과는 독립)
+        }
+    };
+
     useEffect(() => {
         if (!auth?.token) return;
         (async () => {
@@ -29,18 +39,18 @@ export default function LoanPage({ auth, loading, setLoading, notify }) {
                 const data = await loanApi.getProducts();
                 setProducts(data);
                 setApiReady(true);
-                const myLoans = await loanApi.getMyLoans();
-                setLoans(myLoans?.content ?? myLoans ?? []);
             } catch {
-                // 대출 API 미배포 상태 — 정적 상품 목록으로 표시 (신청은 안내 처리)
+                // 대출 API 미배포 백엔드 — 정적 상품 목록으로 표시 (신청은 안내 처리)
                 setApiReady(false);
+                return;
             }
+            await loadApplications();
         })();
     }, [auth?.token]);
 
     const handleApply = async (payload) => {
         if (!apiReady) {
-            notify("대출 신청 API는 준비 중입니다. (백엔드 C1-2 배포 후 사용 가능)", "error");
+            notify("대출 신청 API는 준비 중입니다.", "error");
             return;
         }
         try {
@@ -51,6 +61,7 @@ export default function LoanPage({ auth, loading, setLoading, notify }) {
             } else {
                 notify(`심사 탈락: ${result.rejectReason ?? "사유 미상"}`, "error");
             }
+            await loadApplications();
         } catch (e) {
             notify(e.message, "error");
         } finally {

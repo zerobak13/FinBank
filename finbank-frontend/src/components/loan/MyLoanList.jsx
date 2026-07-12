@@ -41,8 +41,13 @@ export default function MyLoanList({ loans, apiReady }) {
                         </span>
                     </div>
                     <div className="text-xs text-slate-400">
-                        잔여 원금 {won(l.balance)}원 / 원금 {won(l.principal)}원
+                        {l.balance != null
+                            ? <>잔여 원금 {won(l.balance)}원 / 원금 {won(l.principal)}원</>
+                            : <>신청 금액 {won(l.requestedAmount)}원 · {l.termMonths}개월</>}
                     </div>
+                    {l.status === "REJECTED" && l.rejectReason && (
+                        <div className="text-[11px] text-red-400/80 mt-1">탈락 사유: {l.rejectReason}</div>
+                    )}
                 </div>
             ))}
         </div>
