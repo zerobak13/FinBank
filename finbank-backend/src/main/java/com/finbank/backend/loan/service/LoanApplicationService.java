@@ -1,6 +1,6 @@
 package com.finbank.backend.loan.service;
 
-import com.finbank.backend.domain.Member;
+import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.exception.BusinessException;
 import com.finbank.backend.exception.ErrorCode;
 import com.finbank.backend.exception.ForbiddenException;
@@ -15,7 +15,7 @@ import com.finbank.backend.loan.repository.LoanApplicationRepository;
 import com.finbank.backend.loan.repository.LoanProductRepository;
 import com.finbank.backend.loan.service.review.LoanReviewer;
 import com.finbank.backend.loan.service.review.ReviewContext;
-import com.finbank.backend.repository.MemberRepository;
+import com.finbank.backend.member.repository.MemberRepository;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

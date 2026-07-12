@@ -1,7 +1,7 @@
 package com.finbank.backend.loan.domain;
 
-import com.finbank.backend.domain.Account;
-import com.finbank.backend.domain.Member;
+import com.finbank.backend.account.domain.Account;
+import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.exception.BusinessException;
 import com.finbank.backend.exception.ErrorCode;
 import jakarta.persistence.*;

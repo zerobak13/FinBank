@@ -1,6 +1,6 @@
 package com.finbank.backend.loan.service.review;
 
-import com.finbank.backend.repository.AccountRepository;
+import com.finbank.backend.account.repository.AccountRepository;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 

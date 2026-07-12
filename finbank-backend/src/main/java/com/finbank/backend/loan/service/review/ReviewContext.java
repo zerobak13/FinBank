@@ -1,6 +1,6 @@
 package com.finbank.backend.loan.service.review;
 
-import com.finbank.backend.domain.Member;
+import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.loan.domain.LoanProduct;
 
 import java.math.BigDecimal;
