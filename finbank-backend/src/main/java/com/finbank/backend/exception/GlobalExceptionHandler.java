@@ -32,6 +32,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiError> handleBusiness(BusinessException ex) {
+        // 코드 기반 예외는 코드가 가진 상태/이름으로, 레거시(문자열) 예외는 기존처럼 400 BUSINESS_ERROR로.
+        if (ex.getErrorCode() != null) {
+            ErrorCode code = ex.getErrorCode();
+            ApiError error = new ApiError(ex.getMessage(), code.name());
+            return new ResponseEntity<>(error, code.getStatus());
+        }
         ApiError error = new ApiError(ex.getMessage(), "BUSINESS_ERROR");
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
