@@ -18,6 +18,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -57,15 +58,15 @@ class AccountConcurrencyTest {
         Member member = memberRepository.findByEmail(EMAIL).orElseThrow();
 
         Account from = accountRepository.saveAndFlush(
-                new Account(member, "111-111", 100_000L)
+                new Account(member, "111-111", new BigDecimal("100000"))
         );
 
         Account to = accountRepository.saveAndFlush(
-                new Account(member, "222-222", 0L)
+                new Account(member, "222-222", BigDecimal.ZERO)
         );
 
         TransferRequest request =
-                new TransferRequest(from.getId(), to.getAccountNumber(), 70_000L);
+                new TransferRequest(from.getId(), to.getAccountNumber(), new BigDecimal("70000"));
 
         int threadCount = 2;
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -96,8 +97,9 @@ class AccountConcurrencyTest {
         Account finalFrom = accountRepository.findById(from.getId()).orElseThrow();
         Account finalTo = accountRepository.findById(to.getId()).orElseThrow();
 
-        assertThat(finalFrom.getBalance()).isEqualTo(30_000L);
-        assertThat(finalTo.getBalance()).isEqualTo(70_000L);
+        // BigDecimal은 equals가 스케일까지 비교하므로(30000 != 30000.0000) isEqualByComparingTo를 쓴다.
+        assertThat(finalFrom.getBalance()).isEqualByComparingTo("30000");
+        assertThat(finalTo.getBalance()).isEqualByComparingTo("70000");
 
         List<TransactionLog> logs = transactionLogRepository.findAll();
 

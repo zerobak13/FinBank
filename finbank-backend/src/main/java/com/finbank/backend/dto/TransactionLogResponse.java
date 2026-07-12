@@ -1,6 +1,7 @@
 package com.finbank.backend.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -23,10 +24,10 @@ public class TransactionLogResponse {
     private Long toAccountId;
 
     @Schema(description = "거래 금액 (원)", example = "10000")
-    private long amount;
+    private BigDecimal amount;
 
     @Schema(description = "거래 후 잔액 (원)", example = "90000")
-    private long balanceAfter;
+    private BigDecimal balanceAfter;
 
     @Schema(description = "거래 설명", example = "Transfer Out")
     private String description;
@@ -35,7 +36,7 @@ public class TransactionLogResponse {
     private LocalDateTime createdAt;
 
     public TransactionLogResponse(Long id, String type, Long fromAccountId, Long toAccountId,
-                                  long amount, long balanceAfter, String description,
+                                  BigDecimal amount, BigDecimal balanceAfter, String description,
                                   LocalDateTime createdAt) {
         this.id = id;
         this.type = type;
@@ -51,8 +52,8 @@ public class TransactionLogResponse {
     public String getType() { return type; }
     public Long getFromAccountId() { return fromAccountId; }
     public Long getToAccountId() { return toAccountId; }
-    public long getAmount() { return amount; }
-    public long getBalanceAfter() { return balanceAfter; }
+    public BigDecimal getAmount() { return amount; }
+    public BigDecimal getBalanceAfter() { return balanceAfter; }
     public String getDescription() { return description; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 }

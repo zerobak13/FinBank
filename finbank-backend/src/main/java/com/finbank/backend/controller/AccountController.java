@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -88,7 +89,7 @@ public class AccountController {
     @PostMapping("/{id}/deposit")
     public ResponseEntity<Map<String, String>> deposit(
             @Parameter(description = "계좌 ID", example = "1") @PathVariable Long id,
-            @Parameter(description = "입금 금액 (1 이상)", example = "10000") @RequestParam Long amount
+            @Parameter(description = "입금 금액 (1 이상)", example = "10000") @RequestParam BigDecimal amount
     ) {
         accountService.deposit(id, amount);
         return ResponseEntity.ok(Map.of("message", "입금 완료"));
@@ -103,7 +104,7 @@ public class AccountController {
     @PostMapping("/{id}/withdraw")
     public ResponseEntity<Map<String, String>> withdraw(
             @Parameter(description = "계좌 ID", example = "1") @PathVariable Long id,
-            @Parameter(description = "출금 금액 (1 이상)", example = "5000") @RequestParam Long amount
+            @Parameter(description = "출금 금액 (1 이상)", example = "5000") @RequestParam BigDecimal amount
     ) {
         accountService.withdraw(id, amount);
         return ResponseEntity.ok(Map.of("message", "출금 완료"));

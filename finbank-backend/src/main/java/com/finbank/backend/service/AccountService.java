@@ -21,6 +21,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
+import com.finbank.backend.common.MoneyPolicy;
+
+import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -60,13 +63,13 @@ public class AccountService {
         Member member = getCurrentMember();
 
         String accountNumber = generateAccountNumber();
-        Account account = new Account(member, accountNumber, 0L);
-        if (request.getInitialDeposit() > 0) {
+        Account account = new Account(member, accountNumber, BigDecimal.ZERO);
+        if (request.getInitialDeposit().signum() > 0) {
             account.deposit(request.getInitialDeposit());
         }
         Account saved = accountRepository.save(account);
 
-        if (request.getInitialDeposit() > 0) {
+        if (request.getInitialDeposit().signum() > 0) {
             TransactionLog log = TransactionLog.deposit(saved,
                     request.getInitialDeposit(), saved.getBalance());
             transactionLogRepository.save(log);
@@ -127,8 +130,9 @@ public class AccountService {
 
 
     @Transactional
-    public void deposit(Long accountId, long amount) {
-        if (amount <= 0) {
+    public void deposit(Long accountId, BigDecimal amount) {
+        // BigDecimal 비교는 부호 검사(signum)로 — compareTo(ZERO)와 동일하지만 의도가 명확하다.
+        if (amount == null || amount.signum() <= 0) {
             throw new BusinessException("입금 금액은 0보다 커야 합니다.");
         }
 
@@ -155,8 +159,8 @@ public class AccountService {
 
 
     @Transactional
-    public void withdraw(Long accountId, long amount) {
-        if (amount <= 0) {
+    public void withdraw(Long accountId, BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0) {
             throw new BusinessException("출금 금액은 0보다 커야 합니다.");
         }
 
@@ -171,7 +175,8 @@ public class AccountService {
             throw new ForbiddenException("본인 계좌만 출금할 수 있습니다.");
         }
 
-        if (account.getBalance() < amount) {
+        // 잔액 비교는 반드시 compareTo — equals는 스케일까지 비교한다 (1000 != 1000.0000)
+        if (account.getBalance().compareTo(amount) < 0) {
             throw new BusinessException("잔액이 부족합니다.");
         }
 
@@ -204,7 +209,7 @@ public class AccountService {
     public void transfer(TransferRequest request) {
         Member member = getCurrentMember();
 
-        if (request.getAmount() <= 0) {
+        if (request.getAmount() == null || request.getAmount().signum() <= 0) {
             throw new BusinessException("이체 금액은 0보다 커야 합니다.");
         }
 
@@ -240,7 +245,7 @@ public class AccountService {
             throw new BusinessException("잠금된 계좌가 있습니다.");
         }
 
-        if (from.getBalance() < request.getAmount()) {
+        if (from.getBalance().compareTo(request.getAmount()) < 0) {
             throw new BusinessException("잔액이 부족합니다.");
         }
 
@@ -262,10 +267,11 @@ public class AccountService {
 
 
     private AccountSummaryResponse toSummary(Account a) {
+        // 응답은 원 단위 정수로 스케일 정리 (DB의 DECIMAL(19,4)가 1000.0000으로 내려와도 JSON은 1000)
         return new AccountSummaryResponse(
                 a.getId(),
                 a.getAccountNumber(),
-                a.getBalance(),
+                MoneyPolicy.toWon(a.getBalance()),
                 a.isLocked(),
                 a.getMember().getEmail(),
                 a.getMember().getName()
@@ -281,8 +287,8 @@ public class AccountService {
                 t.getType().name(),
                 fromId,
                 toId,
-                t.getAmount(),
-                t.getBalanceAfter(),
+                MoneyPolicy.toWon(t.getAmount()),
+                MoneyPolicy.toWon(t.getBalanceAfter()),
                 t.getDescription(),
                 t.getCreatedAt()
         );

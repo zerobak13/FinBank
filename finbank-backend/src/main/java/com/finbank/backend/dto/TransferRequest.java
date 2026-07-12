@@ -1,9 +1,12 @@
 package com.finbank.backend.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+
+import java.math.BigDecimal;
 
 /**
  * 이체 요청 바디 (POST /api/accounts/transfer).
@@ -20,13 +23,15 @@ public class TransferRequest {
     @NotBlank
     private String toAccountNumber;
 
-    @Schema(description = "이체 금액 (1 이상)", example = "10000")
-    @Min(1)
-    private long amount;
+    @Schema(description = "이체 금액 (1 이상, 원 단위 정수)", example = "10000")
+    @NotNull
+    @DecimalMin("1")
+    @Digits(integer = 15, fraction = 0)
+    private BigDecimal amount;
 
     public TransferRequest() {}
 
-    public TransferRequest(Long fromAccountId, String toAccountNumber, long amount) {
+    public TransferRequest(Long fromAccountId, String toAccountNumber, BigDecimal amount) {
         this.fromAccountId = fromAccountId;
         this.toAccountNumber = toAccountNumber;
         this.amount = amount;
@@ -38,6 +43,6 @@ public class TransferRequest {
     public String getToAccountNumber() { return toAccountNumber; }
     public void setToAccountNumber(String toAccountNumber) { this.toAccountNumber = toAccountNumber; }
 
-    public long getAmount() { return amount; }
-    public void setAmount(long amount) { this.amount = amount; }
+    public BigDecimal getAmount() { return amount; }
+    public void setAmount(BigDecimal amount) { this.amount = amount; }
 }

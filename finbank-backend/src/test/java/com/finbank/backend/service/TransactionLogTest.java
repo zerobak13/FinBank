@@ -18,11 +18,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
@@ -60,7 +62,7 @@ class TransactionLogTest {
         return memberRepository.saveAndFlush(m);
     }
 
-    private Account createAccount(Member member, String number, long balance) {
+    private Account createAccount(Member member, String number, BigDecimal balance) {
         Account acc = new Account(member, number, balance);
         return accountRepository.saveAndFlush(acc);
     }
@@ -69,50 +71,51 @@ class TransactionLogTest {
     @DisplayName("입금 성공 시 DEPOSIT 로그가 1개 남고 balanceAfter가 반영된다")
     void deposit_createsDepositLog() {
         Member member = createMember();
-        Account a = createAccount(member, "111-111", 10_000L);
+        Account a = createAccount(member, "111-111", new BigDecimal("10000"));
 
-        accountService.deposit(a.getId(), 3_000L);
+        accountService.deposit(a.getId(), new BigDecimal("3000"));
 
         List<TransactionLog> logs = transactionLogRepository.findAll();
         assertEquals(1, logs.size());
 
         TransactionLog log = logs.get(0);
         assertEquals(TransactionType.DEPOSIT, log.getType());
-        assertEquals(3_000L, log.getAmount());
-        assertEquals(13_000L, log.getBalanceAfter());
+        // BigDecimal은 equals가 스케일까지 비교하므로(3000 != 3000.0000) isEqualByComparingTo를 쓴다.
+        assertThat(log.getAmount()).isEqualByComparingTo("3000");
+        assertThat(log.getBalanceAfter()).isEqualByComparingTo("13000");
 
         Account updated = accountRepository.findById(a.getId()).orElseThrow();
-        assertEquals(13_000L, updated.getBalance());
+        assertThat(updated.getBalance()).isEqualByComparingTo("13000");
     }
 
     @Test
     @DisplayName("출금 성공 시 WITHDRAW 로그가 1개 남고 balanceAfter가 반영된다")
     void withdraw_createsWithdrawLog() {
         Member member = createMember();
-        Account a = createAccount(member, "111-111", 10_000L);
+        Account a = createAccount(member, "111-111", new BigDecimal("10000"));
 
-        accountService.withdraw(a.getId(), 4_000L);
+        accountService.withdraw(a.getId(), new BigDecimal("4000"));
 
         List<TransactionLog> logs = transactionLogRepository.findAll();
         assertEquals(1, logs.size());
 
         TransactionLog log = logs.get(0);
         assertEquals(TransactionType.WITHDRAW, log.getType());
-        assertEquals(4_000L, log.getAmount());
-        assertEquals(6_000L, log.getBalanceAfter());
+        assertThat(log.getAmount()).isEqualByComparingTo("4000");
+        assertThat(log.getBalanceAfter()).isEqualByComparingTo("6000");
 
         Account updated = accountRepository.findById(a.getId()).orElseThrow();
-        assertEquals(6_000L, updated.getBalance());
+        assertThat(updated.getBalance()).isEqualByComparingTo("6000");
     }
 
     @Test
     @DisplayName("이체 성공 시 TRANSFER_OUT/TRANSFER_IN 로그가 각각 1개씩 총 2개 남는다")
     void transfer_createsTwoLogs() {
         Member member = createMember();
-        Account from = createAccount(member, "111-111", 100_000L);
-        Account to = createAccount(member, "222-222", 0L);
+        Account from = createAccount(member, "111-111", new BigDecimal("100000"));
+        Account to = createAccount(member, "222-222", BigDecimal.ZERO);
 
-        accountService.transfer(new TransferRequest(from.getId(), to.getAccountNumber(), 70_000L));
+        accountService.transfer(new TransferRequest(from.getId(), to.getAccountNumber(), new BigDecimal("70000")));
 
         List<TransactionLog> logs = transactionLogRepository.findAll();
         assertEquals(2, logs.size());
@@ -126,15 +129,15 @@ class TransactionLogTest {
         TransactionLog out = byType.get(TransactionType.TRANSFER_OUT);
         TransactionLog in = byType.get(TransactionType.TRANSFER_IN);
 
-        assertEquals(70_000L, out.getAmount());
-        assertEquals(30_000L, out.getBalanceAfter());
+        assertThat(out.getAmount()).isEqualByComparingTo("70000");
+        assertThat(out.getBalanceAfter()).isEqualByComparingTo("30000");
 
-        assertEquals(70_000L, in.getAmount());
-        assertEquals(70_000L, in.getBalanceAfter());
+        assertThat(in.getAmount()).isEqualByComparingTo("70000");
+        assertThat(in.getBalanceAfter()).isEqualByComparingTo("70000");
 
         Account updatedFrom = accountRepository.findById(from.getId()).orElseThrow();
         Account updatedTo = accountRepository.findById(to.getId()).orElseThrow();
-        assertEquals(30_000L, updatedFrom.getBalance());
-        assertEquals(70_000L, updatedTo.getBalance());
+        assertThat(updatedFrom.getBalance()).isEqualByComparingTo("30000");
+        assertThat(updatedTo.getBalance()).isEqualByComparingTo("70000");
     }
 }
