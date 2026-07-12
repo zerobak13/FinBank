@@ -23,6 +23,9 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     /** 계좌번호 존재 여부 (계좌번호 생성 시 중복 검사) */
     boolean existsByAccountNumber(String accountNumber);
 
+    /** 잠기지 않은 활성 계좌 보유 여부 — 대출 자동심사 룰에서 사용 */
+    boolean existsByMemberAndLockedFalse(Member member);
+
     /**
      * 계좌번호로 계좌 ID만 조회한다(프로젝션).
      * 이체 시 락 순서 결정을 위해 받는 계좌 ID가 필요하지만,

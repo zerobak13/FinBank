@@ -22,8 +22,9 @@ public enum ErrorCode {
     // ── 상태 충돌 (409) — 여신 모듈에서 사용 예정 ───────────────────
     INVALID_STATE(HttpStatus.CONFLICT, "현재 상태에서는 처리할 수 없습니다."),
 
-    // ── 검증 실패 (422) — 여신 모듈에서 사용 예정 ───────────────────
-    AMOUNT_OUT_OF_RANGE(HttpStatus.UNPROCESSABLE_ENTITY, "허용 범위를 벗어난 금액입니다.");
+    // ── 검증 실패 (422) — 여신 모듈 ────────────────────────────────
+    AMOUNT_OUT_OF_RANGE(HttpStatus.UNPROCESSABLE_ENTITY, "허용 범위를 벗어난 금액입니다."),
+    TERM_OUT_OF_RANGE(HttpStatus.UNPROCESSABLE_ENTITY, "허용 범위를 벗어난 대출 기간입니다.");
 
     private final HttpStatus status;
     private final String defaultMessage;
