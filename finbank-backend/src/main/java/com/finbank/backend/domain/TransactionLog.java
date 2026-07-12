@@ -5,6 +5,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -42,13 +43,13 @@ public class TransactionLog {
     @JoinColumn(name = "to_account_id")
     private Account toAccount;
 
-    /** 거래 금액 (원 단위 정수) */
-    @Column(nullable = false)
-    private Long amount;
+    /** 거래 금액 (원) — DECIMAL(19,4) */
+    @Column(nullable = false, precision = 19, scale = 4)
+    private BigDecimal amount;
 
     /** 이 거래 직후의 잔액 — 시점별 잔액 이력 추적용 */
-    @Column(nullable = false)
-    private Long balanceAfter;
+    @Column(nullable = false, precision = 19, scale = 4)
+    private BigDecimal balanceAfter;
 
     /** 거래 발생 시각 */
     @Column(nullable = false)
@@ -58,7 +59,7 @@ public class TransactionLog {
     @Column(length = 255)
     private String description;
 
-    public static TransactionLog deposit(Account to, long amount, long balanceAfter) {
+    public static TransactionLog deposit(Account to, BigDecimal amount, BigDecimal balanceAfter) {
         TransactionLog log = new TransactionLog();
         log.type = TransactionType.DEPOSIT;
         log.toAccount = to;
@@ -68,7 +69,7 @@ public class TransactionLog {
         return log;
     }
 
-    public static TransactionLog withdraw(Account from, long amount, long balanceAfter) {
+    public static TransactionLog withdraw(Account from, BigDecimal amount, BigDecimal balanceAfter) {
         TransactionLog log = new TransactionLog();
         log.type = TransactionType.WITHDRAW;
         log.fromAccount = from;
@@ -78,7 +79,7 @@ public class TransactionLog {
         return log;
     }
 
-    public static TransactionLog transferOut(Account from, Account to, long amount, long fromBalanceAfter) {
+    public static TransactionLog transferOut(Account from, Account to, BigDecimal amount, BigDecimal fromBalanceAfter) {
         TransactionLog log = new TransactionLog();
         log.type = TransactionType.TRANSFER_OUT;
         log.fromAccount = from;
@@ -89,7 +90,7 @@ public class TransactionLog {
         return log;
     }
 
-    public static TransactionLog transferIn(Account from, Account to, long amount, long toBalanceAfter) {
+    public static TransactionLog transferIn(Account from, Account to, BigDecimal amount, BigDecimal toBalanceAfter) {
         TransactionLog log = new TransactionLog();
         log.type = TransactionType.TRANSFER_IN;
         log.fromAccount = from;
