@@ -7,10 +7,12 @@ import { useAuth } from "./hooks/useAuth";
 import { useAccount } from "./hooks/useAccount";
 import { authApi } from "./api/authApi";
 import { accountApi } from "./api/accountApi";
+import LoanPage from "./pages/LoanPage";
 
 export default function App() {
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState("info");
+  const [menu, setMenu] = useState("account"); // account | loan
   const notify = (m, type = "info") => { setMsg(m); setMsgType(type); };
 
   const { auth, saveAuth } = useAuth();
@@ -23,7 +25,7 @@ export default function App() {
 
   const {
     accounts, selected, loading, setAccounts, setSelected,
-    setLoading, loadAccounts, selectAccount
+    setLoading, loadAccounts, selectAccount, refreshAfterTransaction, refreshSilently
   } = useAccount(auth, notify, handleLogout);
 
   const [loginEmail, setLoginEmail] = useState(auth?.email || "");
@@ -33,6 +35,16 @@ export default function App() {
   const [initialDeposit, setInitialDeposit] = useState("");
 
   useEffect(() => { if (auth?.token) loadAccounts(); }, [auth?.token]);
+
+  // 창 포커스 복귀 + 20초 주기로 조용히 갱신 — 다른 계좌에서 이체를 받은 경우
+  // 수신자 화면은 스스로 알 수 없으므로 폴링으로 따라잡는다. (실서비스라면 WebSocket/SSE)
+  useEffect(() => {
+    if (!auth?.token) return;
+    const onFocus = () => refreshSilently();
+    window.addEventListener("focus", onFocus);
+    const timer = setInterval(refreshSilently, 20000);
+    return () => { window.removeEventListener("focus", onFocus); clearInterval(timer); };
+  }, [auth?.token, selected?.account?.id]);
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(""), 4000); return () => clearTimeout(t); }, [msg]);
 
   const handleLogin = async (e) => {
@@ -62,8 +74,7 @@ export default function App() {
       setLoading(true);
       await accountApi.deposit(selected.account.id, val);
       notify("입금 완료", "success");
-      await selectAccount(selected.account.id, false);
-      await loadAccounts();
+      await refreshAfterTransaction(selected.account.id);
     } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
   };
 
@@ -73,8 +84,7 @@ export default function App() {
       setLoading(true);
       await accountApi.withdraw(selected.account.id, val);
       notify("출금 완료", "success");
-      await selectAccount(selected.account.id, false);
-      await loadAccounts();
+      await refreshAfterTransaction(selected.account.id);
     } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
   };
 
@@ -84,8 +94,7 @@ export default function App() {
       setLoading(true);
       await accountApi.transfer({ fromAccountId: selected.account.id, toAccountNumber: to, amount: Number(amt) });
       notify("이체 완료", "success");
-      await selectAccount(selected.account.id, false);
-      await loadAccounts();
+      await refreshAfterTransaction(selected.account.id);
     } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
   };
 
@@ -102,11 +111,15 @@ export default function App() {
 
   return (
       <Layout
-          auth={auth} isRegisterMode={isRegisterMode} setIsRegisterMode={setIsRegisterMode}
+          auth={auth} menu={menu} setMenu={setMenu}
+          isRegisterMode={isRegisterMode} setIsRegisterMode={setIsRegisterMode}
           loginEmail={loginEmail} setLoginEmail={setLoginEmail} loginName={loginName} setLoginName={setLoginName}
           loginPassword={loginPassword} setLoginPassword={setLoginPassword}
           handleLogin={handleLogin} handleRegister={handleRegister} handleLogout={handleLogout}
       >
+        {menu === "loan" ? (
+            <LoanPage auth={auth} loading={loading} setLoading={setLoading} notify={notify} />
+        ) : (
         <div className="max-w-6xl mx-auto px-6 py-6 grid grid-cols-12 gap-6">
           <aside className="col-span-3 space-y-4">
             <AccountList accounts={accounts} selected={selected} selectAccount={selectAccount} auth={auth} />
@@ -129,6 +142,7 @@ export default function App() {
             </div>
           </aside>
         </div>
+        )}
 
         {msg && (
             <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-sm shadow-lg border ${msgType === 'error' ? 'bg-red-500/90 border-red-400' : 'bg-emerald-500/90 border-emerald-400'} text-white`}>

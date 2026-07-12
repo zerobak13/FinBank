@@ -1,7 +1,12 @@
 import React from "react";
 
+const MENUS = [
+    { key: "account", label: "계좌" },
+    { key: "loan", label: "대출" },
+];
+
 export default function Layout({
-                                   children, auth, isRegisterMode, setIsRegisterMode,
+                                   children, auth, menu, setMenu, isRegisterMode, setIsRegisterMode,
                                    loginEmail, setLoginEmail, loginName, setLoginName,
                                    loginPassword, setLoginPassword, handleLogin, handleRegister, handleLogout
                                }) {
@@ -15,6 +20,25 @@ export default function Layout({
                             <div className="text-lg font-semibold tracking-tight">FINBANK</div>
                             <div className="text-xs text-slate-400">Enterprise Internet Banking</div>
                         </div>
+
+                        {/* 메뉴 탭 (로그인 시에만 노출) */}
+                        {auth && (
+                            <nav className="ml-6 flex items-center gap-1">
+                                {MENUS.map((m) => (
+                                    <button
+                                        key={m.key}
+                                        type="button"
+                                        onClick={() => setMenu(m.key)}
+                                        className={`px-3 py-1.5 rounded-lg text-sm transition
+                                            ${menu === m.key
+                                                ? "bg-blue-500/20 text-blue-300 border border-blue-500/40 font-semibold"
+                                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent"}`}
+                                    >
+                                        {m.label}
+                                    </button>
+                                ))}
+                            </nav>
+                        )}
                     </div>
 
                     {auth ? (

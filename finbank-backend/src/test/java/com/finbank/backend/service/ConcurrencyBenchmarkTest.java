@@ -46,6 +46,7 @@ class ConcurrencyBenchmarkTest {
     @Autowired TransactionLogRepository transactionLogRepository;
     @Autowired RefreshTokenRepository refreshTokenRepository;
     @Autowired PlatformTransactionManager txManager;
+    @Autowired com.finbank.backend.support.DatabaseCleaner cleaner;
 
     private static final String EMAIL = "bench@test.com";
     private static final long INITIAL = 200_000L;   // 초기 잔액
@@ -57,10 +58,7 @@ class ConcurrencyBenchmarkTest {
 
     @BeforeEach
     void setUp() {
-        transactionLogRepository.deleteAllInBatch();
-        refreshTokenRepository.deleteAllInBatch();
-        accountRepository.deleteAllInBatch();
-        memberRepository.deleteAllInBatch();
+        cleaner.clean();
         memberRepository.saveAndFlush(new Member(EMAIL, "벤치", "password"));
     }
 

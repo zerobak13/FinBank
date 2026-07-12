@@ -28,16 +28,19 @@ export default function AccountDetail({ selected, loading, deposit, withdraw, tr
 
             <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl">
+                    <div className="text-xs font-semibold text-emerald-300 mb-2">입금 <span className="font-normal text-slate-500">— 이 계좌에 현금입금</span></div>
                     <input type="number" step="1000" min="0" value={dAmount} onChange={e => setDAmount(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 mb-2 text-sm" placeholder="입금액" />
                     <button onClick={() => { deposit(dAmount); setDAmount(""); }} disabled={loading} className="w-full bg-emerald-500 py-2 rounded text-xs font-bold">입금</button>
                 </div>
                 <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl">
+                    <div className="text-xs font-semibold text-rose-300 mb-2">출금 <span className="font-normal text-slate-500">— 이 계좌에서 인출</span></div>
                     <input type="number" step="1000" min="0" value={wAmount} onChange={e => setWAmount(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 mb-2 text-sm" placeholder="출금액" />
                     <button onClick={() => { withdraw(wAmount); setWAmount(""); }} disabled={loading} className="w-full bg-rose-500 py-2 rounded text-xs font-bold">출금</button>
                 </div>
             </div>
 
-            <form className="bg-slate-950 border border-slate-700 p-4 rounded-xl" onSubmit={e => { e.preventDefault(); transfer(toAcc, tAmount); setToAcc(""); setTAmount(""); }}>
+            <form className="bg-slate-950 border border-blue-500/40 p-4 rounded-xl" onSubmit={e => { e.preventDefault(); transfer(toAcc, tAmount); setToAcc(""); setTAmount(""); }}>
+                <div className="text-xs font-semibold text-blue-300 mb-2">이체 <span className="font-normal text-slate-500">— 다른 계좌로 보내기</span></div>
                 <input value={toAcc} onChange={e => setToAcc(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 mb-2 text-sm" placeholder="받는 계좌번호" />
                 <div className="flex gap-2">
                     <input type="number" step="1000" min="0" value={tAmount} onChange={e => setTAmount(e.target.value)} className="flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-sm" placeholder="금액" />

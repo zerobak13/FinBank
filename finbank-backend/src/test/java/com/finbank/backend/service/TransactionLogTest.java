@@ -35,16 +35,13 @@ class TransactionLogTest {
     @Autowired MemberRepository memberRepository;
     @Autowired TransactionLogRepository transactionLogRepository;
     @Autowired RefreshTokenRepository refreshTokenRepository;
+    @Autowired com.finbank.backend.support.DatabaseCleaner cleaner;
 
     private static final String TEST_EMAIL = "log@test.com";
 
     @BeforeEach
     void setUp() {
-        // FK 순서 고려해서 정리 (refresh_tokens는 members 참조 → members보다 먼저)
-        transactionLogRepository.deleteAllInBatch();
-        refreshTokenRepository.deleteAllInBatch();
-        accountRepository.deleteAllInBatch();
-        memberRepository.deleteAllInBatch();
+        cleaner.clean();
 
         // 로그인 세팅
         UsernamePasswordAuthenticationToken auth =
