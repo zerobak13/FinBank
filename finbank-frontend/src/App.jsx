@@ -25,7 +25,7 @@ export default function App() {
 
   const {
     accounts, selected, loading, setAccounts, setSelected,
-    setLoading, loadAccounts, selectAccount
+    setLoading, loadAccounts, selectAccount, refreshAfterTransaction
   } = useAccount(auth, notify, handleLogout);
 
   const [loginEmail, setLoginEmail] = useState(auth?.email || "");
@@ -64,8 +64,7 @@ export default function App() {
       setLoading(true);
       await accountApi.deposit(selected.account.id, val);
       notify("입금 완료", "success");
-      await selectAccount(selected.account.id, false);
-      await loadAccounts();
+      await refreshAfterTransaction(selected.account.id);
     } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
   };
 
@@ -75,8 +74,7 @@ export default function App() {
       setLoading(true);
       await accountApi.withdraw(selected.account.id, val);
       notify("출금 완료", "success");
-      await selectAccount(selected.account.id, false);
-      await loadAccounts();
+      await refreshAfterTransaction(selected.account.id);
     } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
   };
 
@@ -86,8 +84,7 @@ export default function App() {
       setLoading(true);
       await accountApi.transfer({ fromAccountId: selected.account.id, toAccountNumber: to, amount: Number(amt) });
       notify("이체 완료", "success");
-      await selectAccount(selected.account.id, false);
-      await loadAccounts();
+      await refreshAfterTransaction(selected.account.id);
     } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
   };
 
