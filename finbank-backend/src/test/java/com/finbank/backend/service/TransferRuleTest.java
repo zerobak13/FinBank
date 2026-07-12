@@ -21,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.Optional;
 
@@ -63,7 +64,7 @@ class TransferRuleTest {
         SecurityContextHolder.clearContext();
     }
 
-    private Account mockAccount(Long id, Long ownerId, String accountNumber, long balance, boolean locked) {
+    private Account mockAccount(Long id, Long ownerId, String accountNumber, BigDecimal balance, boolean locked) {
         Account acc = mock(Account.class);
         Member owner = mock(Member.class);
 
@@ -100,7 +101,7 @@ class TransferRuleTest {
     void transfer_toAccountNotFound_throwsNotFound() {
         when(accountRepository.findIdByAccountNumber("222-222")).thenReturn(Optional.empty());
 
-        TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
+        TransferRequest req = new TransferRequest(10L, "222-222", new BigDecimal("10000"));
 
         assertThrows(NotFoundException.class, () -> accountService.transfer(req));
         verify(transactionLogRepository, never()).save(any());
@@ -109,12 +110,12 @@ class TransferRuleTest {
     @Test
     @DisplayName("본인 계좌가 아니면 ForbiddenException")
     void transfer_notMyAccount_throwsForbidden() {
-        Account from = mockAccount(10L, 999L, "111-111", 100_000L, false); // ownerId != currentMemberId(1)
-        Account to = mockAccount(20L, 2L, "222-222", 0L, false);
+        Account from = mockAccount(10L, 999L, "111-111", new BigDecimal("100000"),false); // ownerId != currentMemberId(1)
+        Account to = mockAccount(20L, 2L, "222-222", BigDecimal.ZERO,false);
 
         stubTransferLookups(from, to);
 
-        TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
+        TransferRequest req = new TransferRequest(10L, "222-222", new BigDecimal("10000"));
 
         ForbiddenException ex = assertThrows(ForbiddenException.class, () -> accountService.transfer(req));
         assertTrue(ex.getMessage().contains("본인 계좌"));
@@ -129,7 +130,7 @@ class TransferRuleTest {
         // 현재 구현은 계좌번호가 아니라 ID 동일성으로 같은 계좌 여부를 판단한다.
         when(accountRepository.findIdByAccountNumber("111-111")).thenReturn(Optional.of(10L));
 
-        TransferRequest req = new TransferRequest(10L, "111-111", 10_000L);
+        TransferRequest req = new TransferRequest(10L, "111-111", new BigDecimal("10000"));
 
         BusinessException ex = assertThrows(BusinessException.class, () -> accountService.transfer(req));
         assertTrue(ex.getMessage().contains("같은 계좌"));
@@ -141,12 +142,12 @@ class TransferRuleTest {
     @Test
     @DisplayName("잠금 계좌가 있으면 BusinessException")
     void transfer_lockedAccount_throwsBusiness() {
-        Account from = mockAccount(10L, 1L, "111-111", 100_000L, true); // locked
-        Account to = mockAccount(20L, 2L, "222-222", 0L, false);
+        Account from = mockAccount(10L, 1L, "111-111", new BigDecimal("100000"),true); // locked
+        Account to = mockAccount(20L, 2L, "222-222", BigDecimal.ZERO,false);
 
         stubTransferLookups(from, to);
 
-        TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
+        TransferRequest req = new TransferRequest(10L, "222-222", new BigDecimal("10000"));
 
         BusinessException ex = assertThrows(BusinessException.class, () -> accountService.transfer(req));
         assertTrue(ex.getMessage().contains("잠금"));
@@ -158,12 +159,12 @@ class TransferRuleTest {
     @Test
     @DisplayName("잔액 부족이면 BusinessException")
     void transfer_insufficientBalance_throwsBusiness() {
-        Account from = mockAccount(10L, 1L, "111-111", 5_000L, false);
-        Account to = mockAccount(20L, 2L, "222-222", 0L, false);
+        Account from = mockAccount(10L, 1L, "111-111", new BigDecimal("5000"),false);
+        Account to = mockAccount(20L, 2L, "222-222", BigDecimal.ZERO,false);
 
         stubTransferLookups(from, to);
 
-        TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
+        TransferRequest req = new TransferRequest(10L, "222-222", new BigDecimal("10000"));
 
         BusinessException ex = assertThrows(BusinessException.class, () -> accountService.transfer(req));
         assertTrue(ex.getMessage().contains("잔액"));
@@ -175,16 +176,17 @@ class TransferRuleTest {
     @Test
     @DisplayName("성공 시에는 계좌 save 2번 + 로그 save 2번 호출")
     void transfer_success_callsSaves() {
-        Account from = mockAccount(10L, 1L, "111-111", 100_000L, false);
-        Account to = mockAccount(20L, 2L, "222-222", 0L, false);
+        Account from = mockAccount(10L, 1L, "111-111", new BigDecimal("100000"),false);
+        Account to = mockAccount(20L, 2L, "222-222", BigDecimal.ZERO,false);
 
         stubTransferLookups(from, to);
 
         // withdraw/deposit는 실제 잔액 변경 대신 void 처리
-        doNothing().when(from).withdraw(10_000L);
-        doNothing().when(to).deposit(10_000L);
+        // BigDecimal은 equals가 스케일 민감이라 값 매칭 대신 any()로 스텁한다.
+        doNothing().when(from).withdraw(any(BigDecimal.class));
+        doNothing().when(to).deposit(any(BigDecimal.class));
 
-        TransferRequest req = new TransferRequest(10L, "222-222", 10_000L);
+        TransferRequest req = new TransferRequest(10L, "222-222", new BigDecimal("10000"));
 
         assertDoesNotThrow(() -> accountService.transfer(req));
 

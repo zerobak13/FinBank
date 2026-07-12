@@ -3,6 +3,8 @@ package com.finbank.backend.service;
 import com.finbank.backend.domain.Account;
 import com.finbank.backend.domain.Member;
 import com.finbank.backend.dto.TransferRequest;
+
+import java.math.BigDecimal;
 import com.finbank.backend.repository.AccountRepository;
 import com.finbank.backend.repository.MemberRepository;
 import com.finbank.backend.repository.RefreshTokenRepository;
@@ -92,11 +94,11 @@ class AccountServiceDeadlockTest {
         );
 
         Account accountA = accountRepository.save(
-                new Account(member1, "11111111111" + index, 100000L)
+                new Account(member1, "11111111111" + index, new BigDecimal("100000"))
         );
 
         Account accountB = accountRepository.save(
-                new Account(member2, "22222222222" + index, 100000L)
+                new Account(member2, "22222222222" + index, new BigDecimal("100000"))
         );
 
         return new Scenario(member1, member2, accountA, accountB);
@@ -159,7 +161,7 @@ class AccountServiceDeadlockTest {
     }
 
     private TransferRequest createTransferRequest(Long fromAccountId, String toAccountNumber, long amount) {
-        return new TransferRequest(fromAccountId, toAccountNumber, amount);
+        return new TransferRequest(fromAccountId, toAccountNumber, BigDecimal.valueOf(amount));
     }
 
     private void setAuthentication(String email) {

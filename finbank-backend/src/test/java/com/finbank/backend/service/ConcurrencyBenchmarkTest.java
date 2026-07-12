@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -49,6 +50,8 @@ class ConcurrencyBenchmarkTest {
     private static final String EMAIL = "bench@test.com";
     private static final long INITIAL = 200_000L;   // 초기 잔액
     private static final long AMOUNT  = 10_000L;    // 1회 출금액
+    private static final BigDecimal INITIAL_BD = BigDecimal.valueOf(INITIAL);
+    private static final BigDecimal AMOUNT_BD  = BigDecimal.valueOf(AMOUNT);
     private static final int  THREADS = 50;         // 동시 요청 수
     private static final long EXPECTED_SUCCESS = INITIAL / AMOUNT; // 20건
 
@@ -82,10 +85,10 @@ class ConcurrencyBenchmarkTest {
         long start = System.currentTimeMillis();
         runConcurrently(() -> tx.executeWithoutResult(status -> {
             Account a = accountRepository.findById(accountId).orElseThrow(); // 락 없음
-            if (a.getBalance() >= AMOUNT) {                                  // 낡은 값 기준 판단
-                a.withdraw(AMOUNT);
+            if (a.getBalance().compareTo(AMOUNT_BD) >= 0) {                  // 낡은 값 기준 판단
+                a.withdraw(AMOUNT_BD);
                 accountRepository.save(a);
-                transactionLogRepository.save(TransactionLog.withdraw(a, AMOUNT, a.getBalance()));
+                transactionLogRepository.save(TransactionLog.withdraw(a, AMOUNT_BD, a.getBalance()));
             }
         }));
         long elapsed = System.currentTimeMillis() - start;
@@ -101,7 +104,7 @@ class ConcurrencyBenchmarkTest {
             try {
                 SecurityContextHolder.getContext().setAuthentication(
                         new UsernamePasswordAuthenticationToken(EMAIL, null, Collections.emptyList()));
-                accountService.withdraw(accountId, AMOUNT); // findWithLockingById
+                accountService.withdraw(accountId, AMOUNT_BD); // findWithLockingById
             } catch (Exception ignored) {
                 // 잔액 부족 실패는 정상 시나리오
             } finally {
@@ -131,12 +134,13 @@ class ConcurrencyBenchmarkTest {
         transactionLogRepository.deleteAllInBatch();
         accountRepository.deleteAllInBatch();
         Member member = memberRepository.findByEmail(EMAIL).orElseThrow();
-        Account acc = accountRepository.saveAndFlush(new Account(member, "bench-" + System.nanoTime(), INITIAL));
+        Account acc = accountRepository.saveAndFlush(new Account(member, "bench-" + System.nanoTime(), INITIAL_BD));
         return acc.getId();
     }
 
     private Result collect(String label, Long accountId, long elapsedMs) {
-        long finalBalance = accountRepository.findById(accountId).orElseThrow().getBalance();
+        // DECIMAL(19,4)로 조회되지만 값은 항상 원 단위 정수이므로 long으로 안전 변환한다.
+        long finalBalance = accountRepository.findById(accountId).orElseThrow().getBalance().longValueExact();
         int withdrawLogs = (int) transactionLogRepository.findAll().stream()
                 .filter(l -> l.getType() == TransactionType.WITHDRAW).count();
         // "로그상 빠져나간 금액" vs "실제 줄어든 잔액"의 차이 = lost update 로 새어나간 금액

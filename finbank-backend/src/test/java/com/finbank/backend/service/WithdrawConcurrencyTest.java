@@ -18,6 +18,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -57,7 +58,7 @@ class WithdrawConcurrencyTest {
         Member member = memberRepository.findByEmail(EMAIL).orElseThrow();
 
         Account account = accountRepository.saveAndFlush(
-                new Account(member, "333-333", 100_000L)
+                new Account(member, "333-333", new BigDecimal("100000"))
         );
 
         int threadCount = 2;
@@ -72,7 +73,7 @@ class WithdrawConcurrencyTest {
                                     EMAIL, null, Collections.emptyList()
                             )
                     );
-                    accountService.withdraw(account.getId(), 70_000L);
+                    accountService.withdraw(account.getId(), new BigDecimal("70000"));
                 } catch (Exception ignored) {
                     // 동시성 실패(잔액 부족)는 정상 시나리오
                 } finally {
@@ -87,7 +88,8 @@ class WithdrawConcurrencyTest {
 
         // then - 잔액은 정확히 한 번만 차감되어야 한다
         Account finalAccount = accountRepository.findById(account.getId()).orElseThrow();
-        assertThat(finalAccount.getBalance()).isEqualTo(30_000L);
+        // BigDecimal은 equals가 스케일까지 비교하므로 isEqualByComparingTo를 쓴다.
+        assertThat(finalAccount.getBalance()).isEqualByComparingTo("30000");
 
         // 그리고 WITHDRAW 로그도 정확히 1건만 남아야 한다 (lost update가 없었다는 증거)
         List<TransactionLog> logs = transactionLogRepository.findAll();
