@@ -1,6 +1,6 @@
 package com.finbank.backend.exception;
 
-import com.finbank.backend.dto.ApiError;
+import com.finbank.backend.exception.ApiError;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;

@@ -1,7 +1,7 @@
 package com.finbank.backend.loan.service;
 
-import com.finbank.backend.domain.Account;
-import com.finbank.backend.domain.Member;
+import com.finbank.backend.account.domain.Account;
+import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.exception.BusinessException;
 import com.finbank.backend.exception.ErrorCode;
 import com.finbank.backend.exception.ForbiddenException;
@@ -14,10 +14,10 @@ import com.finbank.backend.loan.repository.LoanProductRepository;
 import com.finbank.backend.loan.service.review.CreditLimitRule;
 import com.finbank.backend.loan.service.review.HasActiveAccountRule;
 import com.finbank.backend.loan.service.review.NoActiveOverdueRule;
-import com.finbank.backend.repository.AccountRepository;
-import com.finbank.backend.repository.MemberRepository;
-import com.finbank.backend.repository.RefreshTokenRepository;
-import com.finbank.backend.repository.TransactionLogRepository;
+import com.finbank.backend.account.repository.AccountRepository;
+import com.finbank.backend.member.repository.MemberRepository;
+import com.finbank.backend.auth.repository.RefreshTokenRepository;
+import com.finbank.backend.account.repository.TransactionLogRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

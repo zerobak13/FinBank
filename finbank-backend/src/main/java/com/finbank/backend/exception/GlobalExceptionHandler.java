@@ -1,6 +1,6 @@
 package com.finbank.backend.exception;
 
-import com.finbank.backend.dto.ApiError;
+import com.finbank.backend.exception.ApiError;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;

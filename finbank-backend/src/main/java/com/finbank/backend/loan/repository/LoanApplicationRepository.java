@@ -1,6 +1,6 @@
 package com.finbank.backend.loan.repository;
 
-import com.finbank.backend.domain.Member;
+import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.loan.domain.LoanApplication;
 import org.springframework.data.jpa.repository.JpaRepository;
 
