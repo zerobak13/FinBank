@@ -7,10 +7,12 @@ import { useAuth } from "./hooks/useAuth";
 import { useAccount } from "./hooks/useAccount";
 import { authApi } from "./api/authApi";
 import { accountApi } from "./api/accountApi";
+import LoanPage from "./pages/LoanPage";
 
 export default function App() {
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState("info");
+  const [menu, setMenu] = useState("account"); // account | loan
   const notify = (m, type = "info") => { setMsg(m); setMsgType(type); };
 
   const { auth, saveAuth } = useAuth();
@@ -102,11 +104,15 @@ export default function App() {
 
   return (
       <Layout
-          auth={auth} isRegisterMode={isRegisterMode} setIsRegisterMode={setIsRegisterMode}
+          auth={auth} menu={menu} setMenu={setMenu}
+          isRegisterMode={isRegisterMode} setIsRegisterMode={setIsRegisterMode}
           loginEmail={loginEmail} setLoginEmail={setLoginEmail} loginName={loginName} setLoginName={setLoginName}
           loginPassword={loginPassword} setLoginPassword={setLoginPassword}
           handleLogin={handleLogin} handleRegister={handleRegister} handleLogout={handleLogout}
       >
+        {menu === "loan" ? (
+            <LoanPage auth={auth} loading={loading} setLoading={setLoading} notify={notify} />
+        ) : (
         <div className="max-w-6xl mx-auto px-6 py-6 grid grid-cols-12 gap-6">
           <aside className="col-span-3 space-y-4">
             <AccountList accounts={accounts} selected={selected} selectAccount={selectAccount} auth={auth} />
@@ -129,6 +135,7 @@ export default function App() {
             </div>
           </aside>
         </div>
+        )}
 
         {msg && (
             <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-sm shadow-lg border ${msgType === 'error' ? 'bg-red-500/90 border-red-400' : 'bg-emerald-500/90 border-emerald-400'} text-white`}>
