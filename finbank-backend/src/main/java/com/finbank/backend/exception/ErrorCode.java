@@ -19,12 +19,17 @@ public enum ErrorCode {
     SAME_ACCOUNT_TRANSFER(HttpStatus.BAD_REQUEST, "같은 계좌로는 이체할 수 없습니다."),
     ACCOUNT_LOCKED(HttpStatus.BAD_REQUEST, "잠금된 계좌가 있습니다."),
 
-    // ── 상태 충돌 (409) — 여신 모듈에서 사용 예정 ───────────────────
+    // ── 상태 충돌 (409) — 여신 모듈 ────────────────────────────────
     INVALID_STATE(HttpStatus.CONFLICT, "현재 상태에서는 처리할 수 없습니다."),
+    ALREADY_EXECUTED(HttpStatus.CONFLICT, "이미 실행된 대출 신청입니다."),
+    ALREADY_REPAID(HttpStatus.CONFLICT, "이미 상환된 회차입니다."),
+    OUT_OF_ORDER_INSTALLMENT(HttpStatus.CONFLICT, "회차는 순서대로만 상환할 수 있습니다."),
+    IDEMPOTENT_REQUEST_IN_PROGRESS(HttpStatus.CONFLICT, "동일한 요청이 처리 중입니다."),
 
     // ── 검증 실패 (422) — 여신 모듈 ────────────────────────────────
     AMOUNT_OUT_OF_RANGE(HttpStatus.UNPROCESSABLE_ENTITY, "허용 범위를 벗어난 금액입니다."),
-    TERM_OUT_OF_RANGE(HttpStatus.UNPROCESSABLE_ENTITY, "허용 범위를 벗어난 대출 기간입니다.");
+    TERM_OUT_OF_RANGE(HttpStatus.UNPROCESSABLE_ENTITY, "허용 범위를 벗어난 대출 기간입니다."),
+    IDEMPOTENCY_KEY_MISMATCH(HttpStatus.UNPROCESSABLE_ENTITY, "같은 멱등키로 다른 내용의 요청을 보낼 수 없습니다.");
 
     private final HttpStatus status;
     private final String defaultMessage;

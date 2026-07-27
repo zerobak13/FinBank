@@ -3,9 +3,11 @@ package com.finbank.backend.exception;
 import com.finbank.backend.exception.ApiError;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
@@ -40,6 +42,27 @@ public class GlobalExceptionHandler {
         }
         ApiError error = new ApiError(ex.getMessage(), "BUSINESS_ERROR");
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * 필수 헤더 누락 — 대표적으로 Idempotency-Key.
+     * 이 핸들러가 없으면 아래 catch-all(Exception)이 잡아 500으로 나간다. 클라이언트 잘못은 400이어야 한다.
+     */
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiError> handleMissingHeader(MissingRequestHeaderException ex) {
+        ApiError error = new ApiError(ex.getHeaderName() + " 헤더가 필요합니다.", "MISSING_HEADER");
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * UNIQUE 제약 위반 등 — 멱등키·이중 실행의 <b>DB 레벨 최종 방어선</b>이 작동한 경우.
+     * 서비스 계층 방어를 뚫고 여기까지 왔다는 뜻이므로 500이 아니라 409(충돌)로 알린다.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleDataIntegrity(DataIntegrityViolationException ex) {
+        log.warn("무결성 제약 위반 (중복 요청으로 추정)", ex);
+        ApiError error = new ApiError("중복된 요청입니다.", "DUPLICATE_REQUEST");
+        return new ResponseEntity<>(error, HttpStatus.CONFLICT);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
