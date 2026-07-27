@@ -21,6 +21,7 @@ import com.finbank.backend.loan.repository.LoanProductRepository;
 import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.support.DatabaseCleaner;
+import com.finbank.backend.support.TestAccountNumbers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -77,7 +78,7 @@ class LoanRepaymentServiceTest {
                 .filter(p -> p.getRepaymentType() == RepaymentType.EQUAL_PAYMENT)
                 .findFirst().orElseThrow();
         account = accountRepository.saveAndFlush(
-                new Account(member, "repay-" + System.nanoTime(), INITIAL_BALANCE));
+                new Account(member, TestAccountNumbers.next(), INITIAL_BALANCE));
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(EMAIL, null, Collections.emptyList()));

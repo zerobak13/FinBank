@@ -18,6 +18,7 @@ import com.finbank.backend.account.repository.AccountRepository;
 import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.auth.repository.RefreshTokenRepository;
 import com.finbank.backend.account.repository.TransactionLogRepository;
+import com.finbank.backend.support.TestAccountNumbers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -75,7 +76,7 @@ class LoanApplicationServiceTest {
 
     private Account createActiveAccount() {
         return accountRepository.saveAndFlush(
-                new Account(member, "loan-" + System.nanoTime(), new BigDecimal("1000000")));
+                new Account(member, TestAccountNumbers.next(), new BigDecimal("1000000")));
     }
 
     /** 잔액 balance의 실행된 대출 1건 생성 (한도/연체 룰 테스트용) */
