@@ -1,5 +1,7 @@
 # FinBank
 
+[![CI](https://github.com/zerobak13/FinBank/actions/workflows/ci.yml/badge.svg)](https://github.com/zerobak13/FinBank/actions/workflows/ci.yml)
+
 금융 거래의 **무결성과 동시성 문제**를 중심으로 설계한  
 백엔드 중심의 금융 서비스 포트폴리오 프로젝트입니다.
 
@@ -120,6 +122,19 @@
 - CountDownLatch를 활용한 동시성 테스트
 
 > 테스트는 “개수”보다 **위험도가 높은 영역을 정확히 검증하는 것**을 목표로 했습니다.
+
+### CI (GitHub Actions)
+
+push·PR마다 백엔드 빌드/테스트와 프론트엔드 빌드가 자동으로 돕니다. 현재 테스트 **313개**가 매 커밋마다 실행됩니다.
+
+통합 테스트는 **실제 MySQL 컨테이너**에서 돌립니다. 비관적 락, 조건부 UPDATE, REPEATABLE READ 스냅샷처럼 이 프로젝트가 증명하려는 동작은 대부분 DB 엔진의 특성이라 H2로 바꾸면 검증 자체가 무의미해지기 때문입니다. 잡마다 컨테이너가 새로 뜨므로 로컬 DB 상태에 오염되지도 않습니다 — Flyway 유령 마이그레이션으로 하루를 날린 경험(트러블슈팅 2번)의 구조적인 해법이기도 합니다.
+
+```bash
+# 로컬 실행 (MySQL 필요)
+cd finbank-backend && ./gradlew test
+```
+
+DB 접속 정보와 JWT 시크릿은 로컬에서는 gitignore된 `application-local.yml`이, CI에서는 환경변수가 채웁니다.
 
 ---
 
