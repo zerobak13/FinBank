@@ -20,7 +20,9 @@ CREATE TABLE idempotency_keys
     id            BIGINT      NOT NULL AUTO_INCREMENT,
     idem_key      VARCHAR(64) NOT NULL COMMENT '클라이언트가 보낸 Idempotency-Key (UUID)',
     member_id     BIGINT      NOT NULL COMMENT '요청자 (감사 추적용)',
-    request_hash  CHAR(64)    NOT NULL COMMENT '요청 내용의 SHA-256 — 같은 키 + 다른 내용 탐지',
+    -- SHA-256 hex는 항상 64자라 CHAR(64)가 자연스럽지만, ddl-auto=validate가
+    -- CHAR와 VARCHAR를 다른 타입으로 판정하므로 엔티티(String, length=64)와 맞춰 VARCHAR로 둔다.
+    request_hash  VARCHAR(64) NOT NULL COMMENT '요청 내용의 SHA-256 — 같은 키 + 다른 내용 탐지',
     status        VARCHAR(20) NOT NULL COMMENT 'IN_PROGRESS(선점) | COMPLETED(응답 확정)',
     response_body VARCHAR(4000) NULL COMMENT '확정 응답 스냅샷(JSON) — 재시도 시 그대로 반환',
     created_at    DATETIME(6) NOT NULL,
