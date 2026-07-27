@@ -64,6 +64,10 @@ public class LoanAccount {
     @Column(nullable = false, precision = 7, scale = 6)
     private BigDecimal overdueExtraRate;
 
+    /** 중도상환수수료율 — 실행 시점 스냅샷 */
+    @Column(nullable = false, precision = 7, scale = 6)
+    private BigDecimal prepaymentFeeRate;
+
     /** 상환 방식 — 실행 시점 스냅샷 */
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
@@ -98,6 +102,7 @@ public class LoanAccount {
         loan.balance = application.getRequestedAmount();
         loan.interestRate = product.getInterestRate();          // 스냅샷
         loan.overdueExtraRate = product.getOverdueExtraRate();  // 스냅샷
+        loan.prepaymentFeeRate = product.getPrepaymentFeeRate();// 스냅샷
         loan.repaymentType = product.getRepaymentType();        // 스냅샷
         loan.executedAt = executedAt;
         loan.maturityDate = executedAt.plusMonths(application.getTermMonths());
