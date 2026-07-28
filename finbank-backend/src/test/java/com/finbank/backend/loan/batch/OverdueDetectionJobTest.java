@@ -33,6 +33,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -95,10 +96,19 @@ class OverdueDetectionJobTest {
         return loan;
     }
 
-    private JobExecution runJob(LocalDate baseDate, String runId) throws Exception {
+    /**
+     * <b>잡 파라미터가 같으면 재실행이 거부된다</b>({@code JobInstanceAlreadyCompleteException}).
+     * Spring Batch는 "같은 파라미터 = 같은 JobInstance"로 보고, 한 번 COMPLETED된 인스턴스는
+     * 두 번 완료시키지 않는다 — 프레임워크가 제공하는 중복 실행 방지다.
+     *
+     * <p>이 방어는 배치 메타 테이블에 <b>영구히</b> 남기 때문에, 테스트를 다시 돌리기만 해도
+     * 지난 실행과 충돌한다. 그래서 실행마다 유니크한 구분자를 파라미터에 넣는다
+     * (운영에서 {@code JobParametersIncrementer}나 run.id를 쓰는 것과 같은 이유).</p>
+     */
+    private JobExecution runJob(LocalDate baseDate) throws Exception {
         JobParameters params = new JobParametersBuilder()
                 .addString("baseDate", baseDate.toString())
-                .addString("runId", runId)     // 같은 파라미터로는 재실행이 거부되므로 구분자를 둔다
+                .addString("runId", UUID.randomUUID().toString())
                 .toJobParameters();
         return jobLauncher.run(overdueDetectionJob, params);
     }
@@ -116,7 +126,7 @@ class OverdueDetectionJobTest {
                 BASE_DATE,                 // 오늘 납기 — 아직 연체 아님
                 BASE_DATE.plusDays(30));   // 미도래
 
-        JobExecution execution = runJob(BASE_DATE, "run-1");
+        JobExecution execution = runJob(BASE_DATE);
 
         assertThat(execution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
 
@@ -137,10 +147,10 @@ class OverdueDetectionJobTest {
     void isIdempotentAcrossReruns() throws Exception {
         givenLoanWithSchedules(BASE_DATE.minusDays(10), BASE_DATE.minusDays(5));
 
-        runJob(BASE_DATE, "run-1");
+        runJob(BASE_DATE);
         int afterFirst = overdueHistoryRepository.findByResolvedAtIsNull().size();
 
-        runJob(BASE_DATE, "run-2");
+        runJob(BASE_DATE);
         int afterSecond = overdueHistoryRepository.findByResolvedAtIsNull().size();
 
         assertThat(afterFirst).isEqualTo(2);
@@ -158,7 +168,7 @@ class OverdueDetectionJobTest {
         }
         LoanAccount loan = givenLoanWithSchedules(dueDates);
 
-        JobExecution execution = runJob(BASE_DATE, "run-1");
+        JobExecution execution = runJob(BASE_DATE);
 
         assertThat(execution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
         assertThat(overdueHistoryRepository.findByResolvedAtIsNull()).hasSize(count);
@@ -171,7 +181,7 @@ class OverdueDetectionJobTest {
     void completesWithNothingToDo() throws Exception {
         givenLoanWithSchedules(BASE_DATE.plusDays(10), BASE_DATE.plusDays(40));
 
-        JobExecution execution = runJob(BASE_DATE, "run-1");
+        JobExecution execution = runJob(BASE_DATE);
 
         assertThat(execution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
         assertThat(overdueHistoryRepository.findAll()).isEmpty();
@@ -183,7 +193,7 @@ class OverdueDetectionJobTest {
         LoanAccount loan = givenLoanWithSchedules(BASE_DATE.minusDays(10), BASE_DATE.minusDays(2));
 
         // 기준일을 5일 전으로 → 10일 전 회차만 연체
-        runJob(BASE_DATE.minusDays(5), "run-1");
+        runJob(BASE_DATE.minusDays(5));
 
         List<RepaymentSchedule> schedules = schedulesOf(loan);
         assertThat(schedules.get(0).getStatus()).isEqualTo(ScheduleStatus.OVERDUE);

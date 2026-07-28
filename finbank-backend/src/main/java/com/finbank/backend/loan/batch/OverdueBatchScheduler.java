@@ -43,8 +43,11 @@ public class OverdueBatchScheduler {
     @Scheduled(cron = "0 0 2 * * *")
     public void runOverdueDetection() {
         try {
-            // 같은 잡 파라미터로는 재실행이 거부되므로 기준일을 파라미터로 넘긴다.
-            // 날짜가 파라미터이므로 "어제 날짜로 다시 돌리기"도 자연스럽게 가능하다.
+            // 파라미터를 기준일 하나로 두는 것은 의도적이다.
+            // Spring Batch는 "같은 파라미터 = 같은 JobInstance"로 보고 이미 완료된 인스턴스의
+            // 재실행을 거부한다. 즉 같은 날 배치가 두 번 트리거되면 두 번째는 프레임워크가 막는다
+            // — 도메인 멱등(status 조건) 위에 한 겹 더 있는 방어다.
+            // 날짜가 파라미터이므로 "놓친 어제 날짜로 다시 돌리기"도 자연스럽게 된다.
             JobParameters params = new JobParametersBuilder()
                     .addString("baseDate", LocalDate.now().toString())
                     .toJobParameters();
