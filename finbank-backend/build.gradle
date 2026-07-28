@@ -43,4 +43,9 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // 벤치마크 테스트가 출력하는 표(System.out)를 콘솔에서 바로 볼 수 있게 한다.
+    testLogging {
+        showStandardStreams = true
+        events "passed", "failed"
+    }
 }

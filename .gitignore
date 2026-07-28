@@ -29,3 +29,5 @@ finbank-frontend/.env.production.local
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+# 개인 리뷰 노트 (저장소 제외)
+CODE_REVIEW.md
