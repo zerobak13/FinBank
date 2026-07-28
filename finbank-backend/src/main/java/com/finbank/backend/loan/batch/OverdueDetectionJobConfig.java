@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
+import org.springframework.batch.core.configuration.annotation.JobScope;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.repository.JobRepository;
@@ -60,11 +61,17 @@ public class OverdueDetectionJobConfig {
                 .build();
     }
 
+    /**
+     * 청크 크기를 잡 파라미터로 받기 위해 {@code @JobScope}를 쓴다.
+     * 스텝 빈이 잡 실행 시점에 만들어져야 그때의 파라미터를 읽을 수 있다
+     * (기본 싱글턴이면 애플리케이션 기동 시 한 번 고정된다).
+     */
     @Bean
+    @JobScope
     public Step overdueDetectionStep(JobRepository jobRepository,
                                      PlatformTransactionManager transactionManager,
                                      OverdueScheduleReader overdueScheduleReader,
-                                     @Value("${finbank.batch.chunk-size:100}") int chunkSize) {
+                                     @Value("#{jobParameters['chunkSize'] ?: 100}") int chunkSize) {
         return new StepBuilder(STEP_NAME, jobRepository)
                 .<RepaymentSchedule, OverdueHistory>chunk(chunkSize, transactionManager)
                 .reader(overdueScheduleReader)
@@ -85,7 +92,7 @@ public class OverdueDetectionJobConfig {
     @StepScope
     public OverdueScheduleReader overdueScheduleReader(
             @Value("#{jobParameters['baseDate']}") String baseDate,
-            @Value("${finbank.batch.chunk-size:100}") int chunkSize) {
+            @Value("#{jobParameters['chunkSize'] ?: 100}") int chunkSize) {
         LocalDate date = (baseDate == null) ? LocalDate.now() : LocalDate.parse(baseDate);
         return new OverdueScheduleReader(repaymentScheduleRepository, date, chunkSize);
     }
