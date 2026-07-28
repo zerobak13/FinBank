@@ -11,7 +11,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
-public interface LoanAccountRepository extends JpaRepository<LoanAccount, Long> {
+public interface LoanAccountRepository extends JpaRepository<LoanAccount, Long>, LoanAccountRepositoryCustom {
 
     /**
      * 비관적 락 조회 — 상환 등 잔액이 변하는 연산의 진입점.

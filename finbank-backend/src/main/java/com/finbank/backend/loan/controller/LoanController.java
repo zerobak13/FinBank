@@ -1,7 +1,9 @@
 package com.finbank.backend.loan.controller;
 
+import com.finbank.backend.common.PageResponse;
 import com.finbank.backend.loan.dto.LoanDetailResponse;
 import com.finbank.backend.loan.dto.LoanExecutionResponse;
+import com.finbank.backend.loan.dto.LoanSearchCondition;
 import com.finbank.backend.loan.dto.LoanSummaryResponse;
 import com.finbank.backend.loan.dto.RepaymentRequest;
 import com.finbank.backend.loan.dto.RepaymentResponse;
@@ -15,6 +17,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -97,6 +100,16 @@ public class LoanController {
     @GetMapping
     public List<LoanSummaryResponse> getMyLoans() {
         return loanQueryService.getMyLoans();
+    }
+
+    @Operation(summary = "내 대출 조건 검색 (QueryDSL 동적 쿼리)",
+            description = "상태·상환방식·상품·실행일 구간·원금 구간을 자유롭게 조합합니다. 생략한 조건은 제약 없음으로 처리됩니다.")
+    @GetMapping("/search")
+    public PageResponse<LoanSummaryResponse> search(
+            @ParameterObject LoanSearchCondition condition,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return loanQueryService.search(condition, page, size);
     }
 
     @Operation(summary = "대출 상세 (계약 조건 + 전 회차 스케줄)")
