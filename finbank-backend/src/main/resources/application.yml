@@ -31,6 +31,17 @@ spring:
     baseline-on-migrate: true
     baseline-version: 2
     locations: classpath:db/migration
+
+  batch:
+    job:
+      # 앱이 뜰 때마다 배치가 자동 실행되면 안 된다. 실행 시점은 스케줄러가 정한다.
+      enabled: false
+    jdbc:
+      # 배치 메타 테이블(BATCH_*)은 프레임워크 소유다. 버전업 시 스키마도 함께 바뀌므로
+      # 우리 Flyway 마이그레이션으로 복사해두면 업그레이드 때 두 곳을 맞춰야 한다.
+      # 도메인 스키마는 Flyway가, 프레임워크 스키마는 프레임워크가 관리한다.
+      initialize-schema: always
+
 server:
   port: 8080
 

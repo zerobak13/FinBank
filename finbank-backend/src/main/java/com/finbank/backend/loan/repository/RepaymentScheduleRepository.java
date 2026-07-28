@@ -3,11 +3,13 @@ package com.finbank.backend.loan.repository;
 import com.finbank.backend.loan.domain.LoanAccount;
 import com.finbank.backend.loan.domain.RepaymentSchedule;
 import com.finbank.backend.loan.domain.ScheduleStatus;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -44,6 +46,28 @@ public interface RepaymentScheduleRepository extends JpaRepository<RepaymentSche
         return updateStatusIfIn(scheduleId, ScheduleStatus.PAID,
                 List.of(ScheduleStatus.PENDING, ScheduleStatus.OVERDUE), paidAt);
     }
+
+    /**
+     * 연체 감지 배치의 Reader 쿼리 — <b>커서(id) 기반</b>.
+     *
+     * <p>페이지 번호(offset) 방식을 쓰지 않는 이유: 이 배치는 읽은 행의 {@code status}를
+     * PENDING → OVERDUE로 <b>바꾼다</b>. 조건에 걸리는 행이 처리와 동시에 줄어들기 때문에,
+     * offset 10부터 다음 페이지를 읽으면 앞에서 빠진 만큼 <b>건너뛴 행이 생긴다</b>.
+     * "마지막으로 읽은 id 다음부터"를 읽으면 결과 집합이 줄어도 밀리지 않는다.</p>
+     *
+     * <p>덤으로 offset이 커질수록 느려지는 문제도 없다(10만 번째 페이지도 첫 페이지와 같은 비용).</p>
+     */
+    @Query("""
+            select s from RepaymentSchedule s
+              join fetch s.loanAccount
+             where s.status = com.finbank.backend.loan.domain.ScheduleStatus.PENDING
+               and s.dueDate < :today
+               and s.id > :lastId
+             order by s.id asc
+            """)
+    List<RepaymentSchedule> findOverdueCandidates(@Param("today") LocalDate today,
+                                                  @Param("lastId") Long lastId,
+                                                  Pageable pageable);
 
     /** 가장 마지막으로 납부 완료된 회차 — 중도상환 경과이자의 기산일 계산에 사용 */
     Optional<RepaymentSchedule> findFirstByLoanAccountAndStatusOrderByInstallmentNoDesc(

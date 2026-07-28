@@ -47,6 +47,12 @@ dependencies {
     annotationProcessor 'com.querydsl:querydsl-apt:5.1.0:jakarta'
     annotationProcessor 'jakarta.annotation:jakarta.annotation-api'
     annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
+
+    // Spring Batch — 연체 정산(D단계)에서 도입.
+    // 매일 밤 수십만 회차를 훑어 상태를 바꾸고 이자를 누적하는 작업은
+    // "어디까지 처리했는지"와 "실패 시 어디부터 다시"가 필요하다. 그게 배치 메타 테이블의 역할이다.
+    implementation 'org.springframework.boot:spring-boot-starter-batch'
+    testImplementation 'org.springframework.batch:spring-batch-test'
 }
 
 tasks.named('test') {
