@@ -19,6 +19,35 @@
 
 ---
 
+##  Quick Start
+
+MySQL 설치 없이 백엔드 + DB를 한 번에 띄웁니다.
+
+```bash
+git clone https://github.com/zerobak13/FinBank.git
+cd FinBank
+docker compose up          # 백엔드 :8080, MySQL :3306
+```
+
+Swagger UI: http://localhost:8080/swagger-ui.html
+
+**스키마가 둘인 이유**: `finbank`(개발용)와 `finbank_test`(테스트용)를 분리합니다. 테스트는 `DatabaseCleaner`로 전 테이블을 비우므로, 같은 스키마를 쓰면 `./gradlew test` 한 번에 개발하며 만들어둔 데이터가 전부 사라집니다. **테스트가 "돌리기 무서운 것"이 되면 안 돌리게 됩니다.**
+
+```bash
+# 로컬에서 직접 실행할 때 (MySQL이 이미 있는 경우)
+cd finbank-backend
+./gradlew test        # 테스트 333개 — finbank_test 스키마 사용
+./gradlew perfTest    # 성능 측정 (10만 건 인덱스 / 5만 건 청크) — 수동 실행
+./gradlew bootRun     # 개발 서버 — finbank 스키마 사용
+
+# 프론트엔드
+cd finbank-frontend && npm install && npm run dev
+```
+
+DB 접속 정보와 JWT 시크릿은 로컬에서 gitignore된 `application-local.yml`이, CI·Docker에서는 환경변수가 채웁니다.
+
+---
+
 ##  Tech Stack
 
 ### Backend
@@ -38,6 +67,13 @@
 - Vercel (Frontend)
 - Render (Backend)
 - Aiven MySQL (Database)
+- Docker Compose (로컬 개발 환경)
+- GitHub Actions (CI)
+
+### 여신(대출) 모듈
+- QueryDSL (동적 조건 검색)
+- Spring Batch (연체 감지 · 연체이자 가산)
+- Flyway (스키마 버전 관리)
 
 ---
 

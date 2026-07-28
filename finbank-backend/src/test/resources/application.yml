@@ -1,0 +1,16 @@
+# 테스트 전용 설정 — 운영/개발 설정(main/resources/application.yml)을 덮어쓴다.
+#
+# [왜 스키마를 분리하는가]
+# 테스트는 DatabaseCleaner로 모든 테이블을 비운다. 개발용 DB를 그대로 쓰면
+# `./gradlew test` 한 번에 개발하며 만들어둔 계좌·대출이 전부 사라진다.
+# 실제로 그렇게 동작하고 있었고, 테스트가 "돌리기 무서운 것"이 되면 안 돌리게 된다.
+#
+# CI는 DB_URL 환경변수로 자기 컨테이너를 가리키므로 이 기본값을 쓰지 않는다.
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/finbank_test?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true}
+
+  # 테스트 DB는 언제든 처음부터 다시 만들 수 있어야 한다.
+  # baseline 설정 없이 V1부터 순서대로 적용한다.
+  flyway:
+    baseline-on-migrate: false

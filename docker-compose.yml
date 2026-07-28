@@ -1,0 +1,49 @@
+# clone 후 `docker compose up` 한 번으로 백엔드 + MySQL이 뜬다.
+#
+# 목적은 "내 컴퓨터에서는 되는데요"를 없애는 것이다. MySQL 버전, 문자셋, 초기 스키마까지
+# 코드로 고정해두면 새 환경에서 재현이 되고, 리뷰어도 5분 안에 실행해볼 수 있다.
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: finbank-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_USER: finuser
+      MYSQL_PASSWORD: finpass1234
+      TZ: Asia/Seoul
+    ports:
+      - "3306:3306"
+    volumes:
+      # 스키마 두 개(개발용/테스트용)를 최초 기동 시 생성
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d
+      - finbank-mysql-data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      # 애플리케이션이 "DB가 준비된 뒤에" 뜨도록 — 없으면 기동 순서 때문에 간헐적으로 실패한다
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./finbank-backend
+    container_name: finbank-backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      # 컨테이너 안에서는 localhost가 아니라 서비스 이름으로 DB를 찾는다
+      DB_URL: jdbc:mysql://mysql:3306/finbank?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true
+      DB_USERNAME: finuser
+      DB_PASSWORD: finpass1234
+      JWT_SECRET_KEY: LocalComposeJwtSecretKeyForFinbank1234567890
+      TZ: Asia/Seoul
+    ports:
+      - "8080:8080"
+
+volumes:
+  finbank-mysql-data:
