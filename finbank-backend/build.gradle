@@ -50,10 +50,31 @@ dependencies {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    // perf 태그는 10만 건을 적재하고 인덱스를 껐다 켜며 재는 측정용이라 매 커밋마다 돌릴 필요가 없다.
+    // 기본 test에서 제외하고 아래 perfTest로 분리한다 (CI 시간 = 개발 피드백 속도).
+    useJUnitPlatform {
+        excludeTags 'perf'
+    }
     // 벤치마크 테스트가 출력하는 표(System.out)를 콘솔에서 바로 볼 수 있게 한다.
     testLogging {
         showStandardStreams = true
         events "passed", "failed"
     }
+}
+
+// 성능 측정 전용 태스크 — 필요할 때만 수동 실행한다.
+//   ./gradlew perfTest
+tasks.register('perfTest', Test) {
+    group = 'verification'
+    description = '대량 데이터 기반 인덱스 성능 측정 (perf 태그)'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'perf'
+    }
+    testLogging {
+        showStandardStreams = true
+        events "passed", "failed"
+    }
+    outputs.upToDateWhen { false }   // 같은 코드라도 다시 재고 싶을 때가 있다
 }
