@@ -64,17 +64,30 @@ class LoanSearchPerformanceTest {
      * 조건이 실제로 데이터를 걸러야 한다. 전체의 절반이 걸리는 조건은 인덱스를 타도 의미가 없다.
      */
     private static final String LIST_SQL = """
-            SELECT l.id FROM loan_accounts l
+            SELECT l.id FROM loan_accounts l %s
              WHERE l.member_id = ? AND l.status = 'ACTIVE'
                AND l.executed_at BETWEEN ? AND ?
              ORDER BY l.id DESC LIMIT 10
             """;
 
     private static final String COUNT_SQL = """
-            SELECT COUNT(*) FROM loan_accounts l
+            SELECT COUNT(*) FROM loan_accounts l %s
              WHERE l.member_id = ? AND l.status = 'ACTIVE'
                AND l.executed_at BETWEEN ? AND ?
             """;
+
+    /**
+     * "인덱스 없음" 상태를 만드는 방법 — DROP이 아니라 {@code IGNORE INDEX}.
+     *
+     * <p>처음엔 인덱스를 DROP했다가 다시 만들려 했지만 MySQL이 거부했다(에러 1553:
+     * {@code needed in a foreign key constraint}). loan_accounts.member_id에는 FK가 걸려 있고,
+     * 이 복합 인덱스가 그 FK를 지탱하는 인덱스로 쓰이고 있었기 때문이다.</p>
+     *
+     * <p>결과적으로 더 나은 방법이 됐다. 측정하려던 것은 "인덱스가 물리적으로 없을 때"가 아니라
+     * <b>"옵티마이저가 이 인덱스를 못 쓸 때"</b>이고, IGNORE INDEX는 스키마를 전혀 건드리지 않는다.
+     * 측정 도중 테스트가 죽어도 DB가 반쪽 상태로 남지 않는다.</p>
+     */
+    private static final String IGNORE_HINT = "IGNORE INDEX (" + INDEX_NAME + ")";
 
     private Long memberId;
     private Object[] params;
@@ -99,20 +112,19 @@ class LoanSearchPerformanceTest {
 
     @AfterEach
     void tearDown() {
-        createIndexIfMissing();   // 측정 때문에 지웠을 수 있으므로 V6 상태로 되돌린다
         cleaner.clean();
     }
 
     @Test
     @DisplayName("인덱스 전/후 — 실행계획과 응답시간 비교")
     void compareIndexEffect() {
-        dropIndexIfExists();
-        Measurement beforeCount = measure(COUNT_SQL);
-        Measurement beforeList = measure(LIST_SQL);
+        printIndexes();
 
-        createIndexIfMissing();
-        Measurement afterCount = measure(COUNT_SQL);
-        Measurement afterList = measure(LIST_SQL);
+        Measurement beforeCount = measure(COUNT_SQL.formatted(IGNORE_HINT));
+        Measurement beforeList = measure(LIST_SQL.formatted(IGNORE_HINT));
+
+        Measurement afterCount = measure(COUNT_SQL.formatted(""));
+        Measurement afterList = measure(LIST_SQL.formatted(""));
 
         printTable(beforeCount, afterCount, beforeList, afterList);
 
@@ -152,40 +164,36 @@ class LoanSearchPerformanceTest {
                             Measurement beforeList, Measurement afterList) {
         System.out.println();
         System.out.println("=== 인덱스 성능 비교 (loan_accounts " + String.format("%,d", ROWS) + "건) ===");
-        System.out.printf("%-14s %-12s %-38s %12s %10s%n", "쿼리", "인덱스", "사용 인덱스(type)", "조사 행 수", "평균(ms)");
-        row("COUNT", "전(FK만)", beforeCount);
-        row("COUNT", "후(복합)", afterCount);
-        row("목록+정렬", "전(FK만)", beforeList);
-        row("목록+정렬", "후(복합)", afterList);
+        System.out.printf("%-14s %-14s %-40s %12s %10s%n", "쿼리", "인덱스", "사용 인덱스(type)", "조사 행 수", "평균(ms)");
+        row("COUNT", "미사용", beforeCount);
+        row("COUNT", "복합 인덱스", afterCount);
+        row("목록+정렬", "미사용", beforeList);
+        row("목록+정렬", "복합 인덱스", afterList);
+        System.out.printf("%n  조사 행 수 %,d → %,d (%.1f배 감소), 응답시간 %.2fms → %.2fms%n",
+                beforeCount.rows(), afterCount.rows(),
+                beforeCount.rows() / (double) Math.max(1, afterCount.rows()),
+                beforeCount.avgMs(), afterCount.avgMs());
         System.out.println();
     }
 
     private void row(String query, String label, Measurement m) {
-        System.out.printf("%-14s %-12s %-38s %,12d %10.2f%n",
+        System.out.printf("%-14s %-14s %-40s %,12d %10.2f%n",
                 query, label, m.key() + " (" + m.type() + ")", m.rows(), m.avgMs());
     }
 
-    // ── 인덱스 조작 ────────────────────────────────────────────────
+    // ── 인덱스 현황 ────────────────────────────────────────────────
 
-    private boolean indexExists() {
-        Integer count = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM information_schema.statistics
-                 WHERE table_schema = DATABASE() AND table_name = 'loan_accounts' AND index_name = ?
-                """, Integer.class, INDEX_NAME);
-        return count != null && count > 0;
-    }
-
-    private void dropIndexIfExists() {
-        if (indexExists()) {
-            jdbc.execute("DROP INDEX " + INDEX_NAME + " ON loan_accounts");
-        }
-    }
-
-    private void createIndexIfMissing() {
-        if (!indexExists()) {
-            jdbc.execute("CREATE INDEX " + INDEX_NAME
-                    + " ON loan_accounts (member_id, status, executed_at)");
-        }
+    /** 어떤 인덱스가 후보로 존재하는지 함께 남긴다 — 측정 결과를 나중에 해석하려면 이 정보가 필요하다 */
+    private void printIndexes() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT index_name, GROUP_CONCAT(column_name ORDER BY seq_in_index) AS cols
+                  FROM information_schema.statistics
+                 WHERE table_schema = DATABASE() AND table_name = 'loan_accounts'
+                 GROUP BY index_name
+                """);
+        System.out.println();
+        System.out.println("[loan_accounts 인덱스 목록]");
+        rows.forEach(r -> System.out.printf("  %-40s (%s)%n", r.get("index_name"), r.get("cols")));
     }
 
     // ── 시드 ─────────────────────────────────────────────────────
