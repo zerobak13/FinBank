@@ -1631,13 +1631,13 @@ public <T> T run(String idemKey, Long memberId, String requestHash,
 | POST | `/{id}/withdraw` | 출금 |
 | POST | `/transfer` | 이체 |
 
-### 대출 상품 `/api/loan-products`
+### 대출 상품 `/api/loans/products`
 
 | 메서드 | 경로 | 하는 일 |
 |---|---|---|
 | GET | `/` | 판매 중 상품 목록 |
 
-### 대출 신청 `/api/loan-applications`
+### 대출 신청 `/api/loans/applications`
 
 | 메서드 | 경로 | 하는 일 |
 |---|---|---|
@@ -1650,7 +1650,7 @@ public <T> T run(String idemKey, Long memberId, String requestHash,
 
 | 메서드 | 경로 | 헤더 | 하는 일 |
 |---|---|---|---|
-| POST | `/{applicationId}/execute` | **Idempotency-Key** | 실행 |
+| POST | `/applications/{applicationId}/execute` | **Idempotency-Key** | 실행 |
 | POST | `/{loanId}/repayments` | **Idempotency-Key** | 회차 상환 |
 | POST | `/{loanId}/prepayment` | **Idempotency-Key** | 전액 중도상환 |
 | GET | `/` | | 내 대출 목록 |
