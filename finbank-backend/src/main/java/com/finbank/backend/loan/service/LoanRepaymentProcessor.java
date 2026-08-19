@@ -19,6 +19,7 @@ import com.finbank.backend.loan.domain.calculator.PrepaymentFeeCalculator;
 import com.finbank.backend.loan.dto.RepaymentResponse;
 import com.finbank.backend.loan.repository.LoanAccountRepository;
 import com.finbank.backend.loan.repository.LoanTransactionRepository;
+import com.finbank.backend.loan.repository.OverdueHistoryRepository;
 import com.finbank.backend.loan.repository.RepaymentScheduleRepository;
 import com.finbank.backend.common.MoneyPolicy;
 import org.springframework.stereotype.Service;
@@ -49,6 +50,7 @@ public class LoanRepaymentProcessor {
     private final LoanAccountRepository loanAccountRepository;
     private final RepaymentScheduleRepository repaymentScheduleRepository;
     private final LoanTransactionRepository loanTransactionRepository;
+    private final OverdueHistoryRepository overdueHistoryRepository;
     private final AccountRepository accountRepository;
     private final TransactionLogRepository transactionLogRepository;
     private final AccruedInterestCalculator accruedInterestCalculator;
@@ -58,6 +60,7 @@ public class LoanRepaymentProcessor {
     public LoanRepaymentProcessor(LoanAccountRepository loanAccountRepository,
                                   RepaymentScheduleRepository repaymentScheduleRepository,
                                   LoanTransactionRepository loanTransactionRepository,
+                                  OverdueHistoryRepository overdueHistoryRepository,
                                   AccountRepository accountRepository,
                                   TransactionLogRepository transactionLogRepository,
                                   AccruedInterestCalculator accruedInterestCalculator,
@@ -66,6 +69,7 @@ public class LoanRepaymentProcessor {
         this.loanAccountRepository = loanAccountRepository;
         this.repaymentScheduleRepository = repaymentScheduleRepository;
         this.loanTransactionRepository = loanTransactionRepository;
+        this.overdueHistoryRepository = overdueHistoryRepository;
         this.accountRepository = accountRepository;
         this.transactionLogRepository = transactionLogRepository;
         this.accruedInterestCalculator = accruedInterestCalculator;
@@ -106,6 +110,7 @@ public class LoanRepaymentProcessor {
 
         withdrawFromAccount(account, total);
         loan.repayPrincipal(principal);
+        resolveOverdueHistory(target);
         resolveOverdueIfCleared(loan);
 
         loanTransactionRepository.save(LoanTransaction.repayment(loan, principal, interest, idempotencyKey));
@@ -207,6 +212,18 @@ public class LoanRepaymentProcessor {
         }
         account.withdraw(amount);
         transactionLogRepository.save(TransactionLog.withdraw(account, amount, account.getBalance()));
+    }
+
+    /**
+     * 연체된 회차를 납부하면 그 회차의 연체이력을 닫는다.
+     *
+     * <p>이 처리가 없으면 이력이 미해소로 남아 <b>가산 배치가 이자를 계속 붙인다</b>.
+     * 다 갚았는데 이자가 늘어나는 상태 — 배치(D)를 만들면서 드러난 상환(C3)의 빈틈이다.
+     * 이력이 없으면(연체 아닌 회차) 아무 일도 하지 않는다.</p>
+     */
+    private void resolveOverdueHistory(RepaymentSchedule schedule) {
+        overdueHistoryRepository.findByScheduleIdAndResolvedAtIsNull(schedule.getId())
+                .ifPresent(history -> history.resolve(LocalDate.now()));
     }
 
     /** 연체 회차가 모두 정리되면 대출을 정상으로 되돌린다 */
