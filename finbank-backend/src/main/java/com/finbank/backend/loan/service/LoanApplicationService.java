@@ -1,5 +1,7 @@
 package com.finbank.backend.loan.service;
 
+import com.finbank.backend.account.domain.Account;
+import com.finbank.backend.account.repository.AccountRepository;
 import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.exception.BusinessException;
 import com.finbank.backend.exception.ErrorCode;
@@ -29,20 +31,28 @@ import java.util.Optional;
  * <p>신청은 저장 즉시 자동심사를 거쳐 APPROVED/REJECTED로 확정된다.
  * 심사 룰은 {@link LoanReviewer} 구현체 목록으로 주입되며(@Order 순서),
  * 첫 탈락 룰의 코드가 reject_reason에 기록된다 — 룰 추가는 클래스 추가만으로 끝난다.</p>
+ *
+ * <p><b>계좌 검증과 심사의 경계</b>: 입금 계좌의 존재·소유권·잠금 여부는 심사 룰이 아니라
+ * 입력 검증으로 처리한다(404/403/400). 잘못된 계좌를 고른 것은 "심사에서 떨어질 일"이 아니라
+ * 애초에 성립하지 않는 요청이기 때문이다. 심사 룰은 계좌가 유효함을 전제로
+ * <b>신용 판단</b>(한도·연체)만 담당한다.</p>
  */
 @Service
 public class LoanApplicationService {
 
     private final MemberRepository memberRepository;
+    private final AccountRepository accountRepository;
     private final LoanProductRepository loanProductRepository;
     private final LoanApplicationRepository loanApplicationRepository;
     private final List<LoanReviewer> reviewers; // @Order 순서대로 주입됨
 
     public LoanApplicationService(MemberRepository memberRepository,
+                                  AccountRepository accountRepository,
                                   LoanProductRepository loanProductRepository,
                                   LoanApplicationRepository loanApplicationRepository,
                                   List<LoanReviewer> reviewers) {
         this.memberRepository = memberRepository;
+        this.accountRepository = accountRepository;
         this.loanProductRepository = loanProductRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.reviewers = reviewers;
@@ -78,8 +88,11 @@ public class LoanApplicationService {
                     "대출 기간은 1 ~ " + product.getMaxTermMonths() + "개월 사이여야 합니다.");
         }
 
+        Account linkedAccount = resolveLinkedAccount(request.accountId(), member);
+
         LoanApplication application = loanApplicationRepository.save(
-                new LoanApplication(member, product, request.requestedAmount(), request.termMonths()));
+                new LoanApplication(member, product, linkedAccount,
+                        request.requestedAmount(), request.termMonths()));
 
         // 자동심사: 첫 탈락 룰에서 즉시 확정
         ReviewContext context = new ReviewContext(member, product, request.requestedAmount());
@@ -116,6 +129,27 @@ public class LoanApplicationService {
     @Transactional
     public void cancel(Long id) {
         getOwnApplication(id).cancel();
+    }
+
+    /**
+     * 입금받을 계좌 확정 — 남의 계좌를 지정하는 것은 403, 잠긴 계좌는 400으로 막는다.
+     *
+     * <p>실행 시점이 아니라 <b>신청 시점</b>에 검증하는 이유: 심사를 통과하고 나서야
+     * "그 계좌는 쓸 수 없다"고 알리면 사용자는 이유를 알 수 없는 실패를 겪는다.
+     * 입력 검증은 입력을 받는 자리에서 끝내는 것이 맞다.</p>
+     */
+    private Account resolveLinkedAccount(Long accountId, Member member) {
+        Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다: " + accountId));
+
+        if (!account.getMember().getId().equals(member.getId())) {
+            throw new ForbiddenException("본인 계좌로만 대출을 신청할 수 있습니다.");
+        }
+        if (account.isLocked()) {
+            throw new BusinessException(ErrorCode.ACCOUNT_LOCKED,
+                    "잠금된 계좌로는 대출을 신청할 수 없습니다.");
+        }
+        return account;
     }
 
     private LoanApplication getOwnApplication(Long id) {

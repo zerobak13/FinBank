@@ -15,7 +15,6 @@ const STATUS_LABEL = {
 };
 
 const REJECT_REASON = {
-    NO_ACTIVE_ACCOUNT: "입금받을 활성 계좌가 없습니다",
     CREDIT_LIMIT_EXCEEDED: "기존 대출 잔액 합산이 상품 한도를 넘습니다",
     ACTIVE_OVERDUE_EXISTS: "진행 중인 연체 대출이 있습니다",
 };
@@ -52,6 +51,12 @@ export default function MyLoanList({ applications, apiReady, busy, onExecute }) 
                         신청 금액 {won(a.requestedAmount)}원 · {a.termMonths}개월
                     </div>
 
+                    {a.accountNumber && (
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                            입금 계좌 {a.accountNumber}
+                        </div>
+                    )}
+
                     {a.status === "REJECTED" && a.rejectReason && (
                         <div className="text-[11px] text-red-400/80 mt-1">
                             탈락 사유: {REJECT_REASON[a.rejectReason] ?? a.rejectReason}
@@ -65,7 +70,7 @@ export default function MyLoanList({ applications, apiReady, busy, onExecute }) 
                             onClick={() => onExecute(a.id)}
                             className="mt-2 w-full py-1.5 rounded-lg text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                            대출 실행 (계좌로 {won(a.requestedAmount)}원 입금)
+                            대출 실행 ({a.accountNumber ? `${a.accountNumber}로 ` : ""}{won(a.requestedAmount)}원 입금)
                         </button>
                     )}
                 </div>

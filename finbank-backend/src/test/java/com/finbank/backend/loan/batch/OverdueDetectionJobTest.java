@@ -79,7 +79,7 @@ class OverdueDetectionJobTest {
     /** 회차 납기일을 직접 지정해 대출 1건을 만든다 */
     private LoanAccount givenLoanWithSchedules(LocalDate... dueDates) {
         LoanApplication application = new LoanApplication(
-                member, product, new BigDecimal("12000000"), dueDates.length);
+                member, product, account, new BigDecimal("12000000"), dueDates.length);
         application.approve();
         application.markExecuted();
         loanApplicationRepository.saveAndFlush(application);

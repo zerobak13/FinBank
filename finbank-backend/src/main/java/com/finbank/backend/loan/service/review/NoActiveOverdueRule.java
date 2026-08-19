@@ -8,7 +8,7 @@ import java.util.Optional;
 
 /** 룰 3: 진행 중인 연체(OVERDUE) 대출이 있으면 신규 대출 불가. */
 @Component
-@Order(3)
+@Order(2)
 public class NoActiveOverdueRule implements LoanReviewer {
 
     public static final String CODE = "ACTIVE_OVERDUE_EXISTS";

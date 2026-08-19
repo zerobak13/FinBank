@@ -11,6 +11,9 @@ import java.math.BigDecimal;
 public record LoanApplyRequest(
         @NotNull Long productId,
 
+        /** 대출금을 입금받을 본인 계좌 */
+        @NotNull Long accountId,
+
         @NotNull
         @DecimalMin("1")
         @Digits(integer = 15, fraction = 0)

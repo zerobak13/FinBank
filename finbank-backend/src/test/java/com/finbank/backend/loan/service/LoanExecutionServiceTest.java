@@ -86,7 +86,7 @@ class LoanExecutionServiceTest {
 
     private Long applyApproved() {
         LoanApplicationResponse res = loanApplicationService.apply(
-                new LoanApplyRequest(product.getId(), LOAN_AMOUNT, TERM));
+                new LoanApplyRequest(product.getId(), account.getId(), LOAN_AMOUNT, TERM));
         assertThat(res.status()).isEqualTo(ApplicationStatus.APPROVED);
         return res.id();
     }

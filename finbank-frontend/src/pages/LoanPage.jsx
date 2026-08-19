@@ -19,7 +19,7 @@ const FALLBACK_PRODUCTS = [
 
 const won = (v) => Number(v ?? 0).toLocaleString("ko-KR");
 
-export default function LoanPage({ auth, loading, setLoading, notify, onBalanceChanged }) {
+export default function LoanPage({ auth, accounts = [], loading, setLoading, notify, onBalanceChanged }) {
     const [products, setProducts] = useState(FALLBACK_PRODUCTS);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [applications, setApplications] = useState([]);
@@ -184,7 +184,8 @@ export default function LoanPage({ auth, loading, setLoading, notify, onBalanceC
                 </aside>
 
                 <section className="col-span-12 lg:col-span-4">
-                    <LoanApplyForm product={selectedProduct} loading={loading} onSubmit={handleApply} />
+                    <LoanApplyForm product={selectedProduct} accounts={accounts}
+                                   loading={loading} onSubmit={handleApply} />
                 </section>
 
                 <aside className="col-span-12 lg:col-span-4">

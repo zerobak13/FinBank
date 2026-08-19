@@ -14,7 +14,7 @@ import java.util.Optional;
  * "상품 한도 대비 총 노출액" 룰로 축소했다. (축소 근거를 아는 것이 포인트)</p>
  */
 @Component
-@Order(2)
+@Order(1)
 public class CreditLimitRule implements LoanReviewer {
 
     public static final String CODE = "CREDIT_LIMIT_EXCEEDED";

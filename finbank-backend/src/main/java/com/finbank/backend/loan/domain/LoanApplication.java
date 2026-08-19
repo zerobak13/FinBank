@@ -1,5 +1,6 @@
 package com.finbank.backend.loan.domain;
 
+import com.finbank.backend.account.domain.Account;
 import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.exception.BusinessException;
 import com.finbank.backend.exception.ErrorCode;
@@ -39,6 +40,16 @@ public class LoanApplication {
     @JoinColumn(name = "product_id", nullable = false)
     private LoanProduct product;
 
+    /**
+     * 대출금을 입금받을 계좌 — 신청자가 지정한다.
+     *
+     * <p>V7 이전에 만들어진 신청은 값이 없다(NULL). 실행 시점에 NULL이면
+     * 종전 동작대로 회원의 첫 활성 계좌로 폴백한다.</p>
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "linked_account_id")
+    private Account linkedAccount;
+
     /** 신청 금액 */
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal requestedAmount;
@@ -62,9 +73,11 @@ public class LoanApplication {
 
     private LocalDateTime reviewedAt;
 
-    public LoanApplication(Member member, LoanProduct product, BigDecimal requestedAmount, int termMonths) {
+    public LoanApplication(Member member, LoanProduct product, Account linkedAccount,
+                           BigDecimal requestedAmount, int termMonths) {
         this.member = member;
         this.product = product;
+        this.linkedAccount = linkedAccount;
         this.requestedAmount = requestedAmount;
         this.termMonths = termMonths;
     }

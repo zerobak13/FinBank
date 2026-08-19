@@ -87,7 +87,7 @@ class LoanRepaymentConcurrencyTest {
 
         login();
         LoanApplicationResponse application = loanApplicationService.apply(
-                new LoanApplyRequest(product.getId(), LOAN_AMOUNT, TERM));
+                new LoanApplyRequest(product.getId(), account.getId(), LOAN_AMOUNT, TERM));
         loan = loanExecutionService.execute(application.id(), UUID.randomUUID().toString());
     }
 

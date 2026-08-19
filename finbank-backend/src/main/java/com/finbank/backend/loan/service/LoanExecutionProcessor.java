@@ -90,7 +90,7 @@ public class LoanExecutionProcessor {
 
         // 입금 계좌는 락 조회를 첫 조회로 — 락 이전의 낡은 잔액을 읽지 않게 한다.
         Account linkedAccount = accountRepository
-                .findWithLockingById(resolveLinkedAccountId(memberId))
+                .findWithLockingById(resolveLinkedAccountId(application, memberId))
                 .orElseThrow(() -> new NotFoundException("입금할 계좌를 찾을 수 없습니다."));
 
         if (linkedAccount.isLocked()) {
@@ -125,10 +125,16 @@ public class LoanExecutionProcessor {
     }
 
     /**
-     * 입금받을 계좌 선택 — 심사 룰(HasActiveAccountRule)이 보장한 "잠기지 않은 활성 계좌"를 쓴다.
-     * 현재는 회원의 첫 계좌를 사용한다(신청 시 계좌 지정 기능은 확장 여지로 남김).
+     * 입금받을 계좌 확정 — 신청 시 지정한 계좌를 쓴다.
+     *
+     * <p>지정 계좌가 없는 신청(V7 이전 데이터)은 종전 동작대로 회원의 첫 활성 계좌로
+     * 폴백한다. 소유권은 신청 시점에 검증했고, 신청 소유자 == 실행 요청자임을
+     * 이 메서드 호출 전에 이미 확인했으므로 여기서 다시 검사하지 않는다.</p>
      */
-    private Long resolveLinkedAccountId(Long memberId) {
+    private Long resolveLinkedAccountId(LoanApplication application, Long memberId) {
+        if (application.getLinkedAccount() != null) {
+            return application.getLinkedAccount().getId();
+        }
         return accountRepository.findActiveIdsByMemberId(memberId).stream()
                 .findFirst()
                 .orElseThrow(() -> new NotFoundException("입금할 활성 계좌가 없습니다."));
