@@ -22,6 +22,7 @@ public class DatabaseCleaner {
     }
 
     public void clean() {
+        jdbcTemplate.update("DELETE FROM idempotency_keys");
         jdbcTemplate.update("DELETE FROM loan_transactions");
         jdbcTemplate.update("DELETE FROM overdue_histories");
         jdbcTemplate.update("DELETE FROM repayment_schedules");

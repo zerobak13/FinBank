@@ -2,10 +2,11 @@ spring:
   profiles:
     active: local
   datasource:
-    # URL은 로컬 환경이므로 그대로 두어도 무방하지만, 외부 배포 시에는 이 또한 변수화합니다.
-    url: jdbc:mysql://localhost:3306/finbank?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true
-    username: ${DB_USERNAME}  # 변수 처리
-    password: ${DB_PASSWORD}  # 변수 처리
+    # 기본값은 로컬 MySQL. CI·배포 환경은 DB_URL 환경변수로 덮어쓴다.
+    # (기본값을 그대로 두어 로컬 실행은 설정 없이 동작한다)
+    url: ${DB_URL:jdbc:mysql://localhost:3306/finbank?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME}  # 로컬은 application-local.yml, CI·배포는 환경변수가 채운다
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:

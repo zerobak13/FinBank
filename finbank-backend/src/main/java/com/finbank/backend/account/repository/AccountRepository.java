@@ -35,6 +35,13 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     @Query("select a.id from Account a where a.accountNumber = :accountNumber")
     Optional<Long> findIdByAccountNumber(@Param("accountNumber") String accountNumber);
 
+    /**
+     * 회원의 잠기지 않은 계좌 ID 목록(오름차순, 프로젝션).
+     * 대출 실행 시 입금받을 계좌를 고르는 데 사용한다 — 위와 같은 이유로 엔티티 대신 ID만 읽는다.
+     */
+    @Query("select a.id from Account a where a.member.id = :memberId and a.locked = false order by a.id asc")
+    List<Long> findActiveIdsByMemberId(@Param("memberId") Long memberId);
+
     /** 비관적 쓰기 락(SELECT ... FOR UPDATE)으로 계좌 조회 — 입출금·이체의 동시성 제어에 사용 */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Account> findWithLockingById(Long id);

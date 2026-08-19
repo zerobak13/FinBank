@@ -45,6 +45,10 @@ public class LoanProduct {
     @Column(nullable = false, precision = 7, scale = 6)
     private BigDecimal overdueExtraRate;
 
+    /** 중도상환수수료율 (예: 0.015 = 1.5%) — 실행 시 계약으로 스냅샷된다 */
+    @Column(nullable = false, precision = 7, scale = 6)
+    private BigDecimal prepaymentFeeRate;
+
     /** 최소 신청 금액 */
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal minAmount;

@@ -8,6 +8,7 @@ import com.finbank.backend.account.repository.AccountRepository;
 import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.auth.repository.RefreshTokenRepository;
 import com.finbank.backend.account.repository.TransactionLogRepository;
+import com.finbank.backend.support.TestAccountNumbers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -132,7 +133,7 @@ class ConcurrencyBenchmarkTest {
         transactionLogRepository.deleteAllInBatch();
         accountRepository.deleteAllInBatch();
         Member member = memberRepository.findByEmail(EMAIL).orElseThrow();
-        Account acc = accountRepository.saveAndFlush(new Account(member, "bench-" + System.nanoTime(), INITIAL_BD));
+        Account acc = accountRepository.saveAndFlush(new Account(member, TestAccountNumbers.next(), INITIAL_BD));
         return acc.getId();
     }
 
