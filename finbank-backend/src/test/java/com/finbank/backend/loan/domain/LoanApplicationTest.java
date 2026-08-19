@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class LoanApplicationTest {
 
     private LoanApplication newApplication() {
-        return new LoanApplication(null, null, new BigDecimal("10000000"), 12);
+        return new LoanApplication(null, null, null, new BigDecimal("10000000"), 12);
     }
 
     @Test
@@ -42,7 +42,7 @@ class LoanApplicationTest {
     @DisplayName("REJECTED 상태에서 approve() 시도 → 409 INVALID_STATE")
     void approve_fromRejected_throws() {
         LoanApplication app = newApplication();
-        app.reject("NO_ACTIVE_ACCOUNT");
+        app.reject("CREDIT_LIMIT_EXCEEDED");
         assertThatThrownBy(app::approve)
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())

@@ -74,4 +74,14 @@ public class Account {
         }
         this.balance = this.balance.subtract(amount);
     }
+
+    /** 계좌 잠금 — 거래 정지 상태로 전환한다. */
+    public void lock() {
+        this.locked = true;
+    }
+
+    /** 계좌 잠금 해제 */
+    public void unlock() {
+        this.locked = false;
+    }
 }

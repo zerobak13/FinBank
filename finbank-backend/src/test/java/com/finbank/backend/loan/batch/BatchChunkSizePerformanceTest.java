@@ -125,7 +125,7 @@ class BatchChunkSizePerformanceTest {
                 new Account(member, TestAccountNumbers.next(), new BigDecimal("1000000")));
         LoanProduct product = loanProductRepository.findByStatus(ProductStatus.ON_SALE).get(0);
 
-        LoanApplication application = new LoanApplication(member, product, new BigDecimal("12000000"), 12);
+        LoanApplication application = new LoanApplication(member, product, account, new BigDecimal("12000000"), 12);
         application.approve();
         application.markExecuted();
         loanApplicationRepository.saveAndFlush(application);

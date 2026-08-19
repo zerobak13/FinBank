@@ -118,7 +118,7 @@ export default function App() {
           handleLogin={handleLogin} handleRegister={handleRegister} handleLogout={handleLogout}
       >
         {menu === "loan" ? (
-            <LoanPage auth={auth} loading={loading} setLoading={setLoading} notify={notify}
+            <LoanPage auth={auth} accounts={accounts} loading={loading} setLoading={setLoading} notify={notify}
                       onBalanceChanged={refreshSilently} />
         ) : (
         <div className="max-w-6xl mx-auto px-6 py-6 grid grid-cols-12 gap-6">
