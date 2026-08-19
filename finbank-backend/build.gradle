@@ -61,6 +61,17 @@ tasks.named('test') {
     useJUnitPlatform {
         excludeTags 'perf'
     }
+
+    // [테스트 DB 격리] 테스트는 DatabaseCleaner로 전 테이블을 비우므로 개발 DB를 쓰면
+    // ./gradlew test 한 번에 개발 데이터가 사라진다. 그래서 finbank_test 스키마를 쓴다.
+    //
+    // 설정 파일이 아니라 시스템 프로퍼티로 주입하는 이유:
+    // src/test/resources/application.yml을 만들면 같은 이름의 main 설정을 '병합'이 아니라
+    // '대체'해버린다. username·password·JPA·Flyway 설정까지 통째로 사라져 접속조차 안 됐다.
+    // 시스템 프로퍼티는 모든 설정 파일보다 우선하면서 나머지 설정은 그대로 살려둔다.
+    systemProperty 'spring.datasource.url',
+            System.getenv('DB_URL') ?: 'jdbc:mysql://localhost:3306/finbank_test' +
+                    '?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true'
     // 벤치마크 테스트가 출력하는 표(System.out)를 콘솔에서 바로 볼 수 있게 한다.
     testLogging {
         showStandardStreams = true
@@ -78,6 +89,17 @@ tasks.register('perfTest', Test) {
     useJUnitPlatform {
         includeTags 'perf'
     }
+
+    // [테스트 DB 격리] 테스트는 DatabaseCleaner로 전 테이블을 비우므로 개발 DB를 쓰면
+    // ./gradlew test 한 번에 개발 데이터가 사라진다. 그래서 finbank_test 스키마를 쓴다.
+    //
+    // 설정 파일이 아니라 시스템 프로퍼티로 주입하는 이유:
+    // src/test/resources/application.yml을 만들면 같은 이름의 main 설정을 '병합'이 아니라
+    // '대체'해버린다. username·password·JPA·Flyway 설정까지 통째로 사라져 접속조차 안 됐다.
+    // 시스템 프로퍼티는 모든 설정 파일보다 우선하면서 나머지 설정은 그대로 살려둔다.
+    systemProperty 'spring.datasource.url',
+            System.getenv('DB_URL') ?: 'jdbc:mysql://localhost:3306/finbank_test' +
+                    '?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true'
     testLogging {
         showStandardStreams = true
         events "passed", "failed"

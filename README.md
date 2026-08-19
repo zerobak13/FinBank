@@ -19,6 +19,35 @@
 
 ---
 
+##  Quick Start
+
+MySQL 설치 없이 백엔드 + DB를 한 번에 띄웁니다.
+
+```bash
+git clone https://github.com/zerobak13/FinBank.git
+cd FinBank
+docker compose up          # 백엔드 :8080, MySQL :3306
+```
+
+Swagger UI: http://localhost:8080/swagger-ui.html
+
+**스키마가 둘인 이유**: `finbank`(개발용)와 `finbank_test`(테스트용)를 분리합니다. 테스트는 `DatabaseCleaner`로 전 테이블을 비우므로, 같은 스키마를 쓰면 `./gradlew test` 한 번에 개발하며 만들어둔 데이터가 전부 사라집니다. **테스트가 "돌리기 무서운 것"이 되면 안 돌리게 됩니다.**
+
+```bash
+# 로컬에서 직접 실행할 때 (MySQL이 이미 있는 경우)
+cd finbank-backend
+./gradlew test        # 테스트 333개 — finbank_test 스키마 사용
+./gradlew perfTest    # 성능 측정 (10만 건 인덱스 / 5만 건 청크) — 수동 실행
+./gradlew bootRun     # 개발 서버 — finbank 스키마 사용
+
+# 프론트엔드
+cd finbank-frontend && npm install && npm run dev
+```
+
+DB 접속 정보와 JWT 시크릿은 로컬에서 gitignore된 `application-local.yml`이, CI·Docker에서는 환경변수가 채웁니다.
+
+---
+
 ##  Tech Stack
 
 ### Backend
@@ -38,6 +67,13 @@
 - Vercel (Frontend)
 - Render (Backend)
 - Aiven MySQL (Database)
+- Docker Compose (로컬 개발 환경)
+- GitHub Actions (CI)
+
+### 여신(대출) 모듈
+- QueryDSL (동적 조건 검색)
+- Spring Batch (연체 감지 · 연체이자 가산)
+- Flyway (스키마 버전 관리)
 
 ---
 
@@ -354,6 +390,13 @@ DB 접속 정보와 JWT 시크릿은 로컬에서는 gitignore된 `application-l
 - **원인**: 상환 로직이 회차 상태(OVERDUE → PAID)와 대출 상태만 되돌리고 **`OverdueHistory`를 닫지 않았다.** C3 시점에는 연체이력을 만드는 주체(배치)가 없어서 이 빈틈이 드러날 수 없었다 — 코드는 틀렸지만 증상이 없었던 것이다.
 - **해결**: 회차 상환 시 해당 회차의 진행 중 이력을 `resolve`하도록 고치고, "상환 → 가산 중단"을 통합 테스트로 고정했다.
 - **교훈**: 기능 A(상환)와 기능 B(배치)가 같은 데이터를 반대 방향으로 다룰 때, **B가 없는 동안 A의 버그는 잠복한다.** 뒤늦게 붙는 기능은 앞선 기능의 검증되지 않은 가정을 드러내는 역할을 한다.
+
+### 6. 테스트 설정 파일 하나 추가했더니 전체 컨텍스트가 죽었다 — 설정은 병합이 아니라 대체된다
+
+- **문제**: 테스트가 개발 DB를 비우는 문제를 고치려고 `src/test/resources/application.yml`에 URL만 적었는데, 통합 테스트 53개가 전부 `Access denied for user 'bagjeyeong'`로 실패했다. 적은 적도 없는 계정 이름이었다.
+- **원인**: main과 test 모두 `classpath:/application.yml`이다. 같은 이름·같은 위치이므로 Spring은 **둘을 합치지 않고 테스트 클래스패스의 것 하나만 읽는다.** URL 한 줄만 남고 username·password·JPA·Flyway 설정이 통째로 사라져, 접속 계정이 비어 OS 사용자명으로 시도한 것이다.
+- **해결**: 설정 파일을 없애고 Gradle 테스트 태스크의 **시스템 프로퍼티**로 URL만 주입했다. 시스템 프로퍼티는 모든 설정 파일보다 우선하면서 나머지 설정은 그대로 살려둔다.
+- **교훈**: 설정을 **덮어쓰려면 같은 파일을 다시 만들지 말고 우선순위가 더 높은 곳에서 그 키만 지정한다.** 같은 이름의 파일을 추가하는 순간 나머지 설정을 잃는다. 에러 메시지의 "내가 적은 적 없는 값"은 대개 설정이 사라졌다는 신호다.
 
 ---
 

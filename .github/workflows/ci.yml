@@ -25,7 +25,7 @@ jobs:
         image: mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: rootpassword
-          MYSQL_DATABASE: finbank
+          MYSQL_DATABASE: finbank_test   # 테스트는 전용 스키마를 쓴다 (개발 DB 오염 방지 정책과 동일)
           MYSQL_USER: finuser
           MYSQL_PASSWORD: finpass1234
         ports:
@@ -39,6 +39,7 @@ jobs:
     env:
       # application.yml의 ${...} 자리를 채운다.
       # 로컬은 gitignore된 application-local.yml이 채우고, CI는 환경변수가 채운다.
+      DB_URL: jdbc:mysql://127.0.0.1:3306/finbank_test?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true
       DB_USERNAME: finuser
       DB_PASSWORD: finpass1234
       JWT_SECRET_KEY: CiOnlyJwtSecretKeyForFinbankIntegrationTests1234567890
