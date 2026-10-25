@@ -78,6 +78,30 @@ class ScheduleGeneratorTest {
             assertThat(one).hasSize(1);
             assertLine(one.get(0), "10000000", "50000", "0");
         }
+
+        /*
+         * 회귀: 불변식 하네스의 무작위 탐색이 찾은 버그.
+         * 이자 절사(−1원 미만)와 납입액 반올림(+0.5원 이하)의 차이가 복리로 누적되어
+         * 만기 전에 잔액이 음수 → 마지막 회차 원금 음수(고객 환급)가 되던 조합.
+         * 조용히 잘못된 스케줄을 만들지 않고 거부한다.
+         */
+        @Test
+        @DisplayName("[회귀] 소액: 59원·20%·11개월 — 10회차에 잔액 −1원이 되므로 거부")
+        void rejectsNegativeBalance_tinyPrincipal() {
+            assertThatThrownBy(() -> generator.generate(
+                    new BigDecimal("59"), new BigDecimal("0.2"), 11, LocalDate.of(2026, 8, 31)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("10회차");
+        }
+
+        @Test
+        @DisplayName("[회귀] 고금리·초장기: 100만원·19.9%·387개월 — 만기 전 잔액 음수이므로 거부")
+        void rejectsNegativeBalance_longTerm() {
+            assertThatThrownBy(() -> generator.generate(
+                    new BigDecimal("1000001"), new BigDecimal("0.199"), 387, EXECUTED))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("잔액이 음수");
+        }
     }
 
     @Nested
