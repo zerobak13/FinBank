@@ -18,6 +18,14 @@ import java.util.List;
  * </pre>
  *
  * <p>경계: r = 0이면 공식의 분모가 0이므로, 원금 P/n 균등 분할로 별도 처리한다.</p>
+ *
+ * <p><b>지원하지 않는 입력 — 반올림 누적으로 잔액이 음수가 되는 조합.</b>
+ * 매 회차 이자는 절사되고(실제보다 최대 1원 적게) 월 납입액은 반올림되므로(최대 0.5원 많게),
+ * 원금 상환분이 매달 조금씩 과다해지고 그 차이가 이자율로 복리 누적된다. 원금이 아주 작거나
+ * (예: 59원·20%·11개월) 고금리·초장기(예: 100만원·19.9%·387개월)면 만기 전에 잔액이 음수가 되어
+ * 마지막 회차 원금이 음수(= 고객에게 환급)가 된다. 이런 스케줄을 조용히 만들지 않고 거부한다.
+ * 현재 상품(최대 60개월, 최소 100만원)에서는 발생하지 않으며, 불변식 하네스의 무작위 탐색으로 발견했다.
+ * 장기 상품(주택담보 등)을 추가할 때는 잔여 회차 재산정 방식으로 재설계가 필요하다.</p>
  */
 public class EqualPaymentGenerator implements RepaymentScheduleGenerator {
 
@@ -36,6 +44,12 @@ public class EqualPaymentGenerator implements RepaymentScheduleGenerator {
             BigDecimal interest = MoneyPolicy.toWon(balance.multiply(r));
             BigDecimal principalPortion = payment.subtract(interest);
             balance = balance.subtract(principalPortion);
+            if (balance.signum() < 0) {
+                throw new IllegalArgumentException(
+                        "원리금균등 스케줄을 만들 수 없는 조건입니다 (원금 " + principal.toPlainString()
+                                + ", 연이율 " + annualRate.toPlainString() + ", " + termMonths + "개월): "
+                                + "반올림 누적으로 " + i + "회차에 잔액이 음수가 됩니다.");
+            }
             lines.add(new ScheduleLine(i, executedAt.plusMonths(i), principalPortion, interest, payment, balance));
         }
 
