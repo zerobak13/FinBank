@@ -3,6 +3,7 @@ package com.finbank.backend.account.controller;
 import com.finbank.backend.account.dto.*;
 import com.finbank.backend.common.PageResponse;
 import com.finbank.backend.account.service.AccountService;
+import com.finbank.backend.account.service.AccountTransferService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -29,10 +30,15 @@ import java.util.Map;
 @SecurityRequirement(name = "BearerAuth")
 public class AccountController {
 
-    private final AccountService accountService;
+    private static final String IDEMPOTENCY_KEY = "Idempotency-Key";
 
-    public AccountController(AccountService accountService) {
+    private final AccountService accountService;
+    private final AccountTransferService accountTransferService;
+
+    public AccountController(AccountService accountService,
+                             AccountTransferService accountTransferService) {
         this.accountService = accountService;
+        this.accountTransferService = accountTransferService;
     }
 
     @Operation(summary = "계좌 생성", description = "새 계좌를 개설합니다. 초기 입금액(initialDeposit)을 0 이상으로 설정할 수 있습니다.")
@@ -118,6 +124,9 @@ public class AccountController {
 
                     **동시성 제어**: 데드락 방지를 위해 ID 오름차순으로 비관적 락(PESSIMISTIC_WRITE)을 획득합니다.
 
+                    **멱등성**: `Idempotency-Key` 헤더가 필수입니다. 사용자 행동 1회당 키 1개를 만들고,
+                    재시도에는 같은 키를 다시 보내세요. 이미 처리된 키면 이체를 다시 하지 않고 저장된 응답을 돌려줍니다.
+
                     **검증 항목**
                     - 본인 계좌에서만 출금 가능
                     - 같은 계좌로의 이체 불가
@@ -129,12 +138,14 @@ public class AccountController {
             @ApiResponse(responseCode = "200", description = "이체 완료"),
             @ApiResponse(responseCode = "400", description = "잔액 부족 또는 잘못된 요청"),
             @ApiResponse(responseCode = "403", description = "본인 계좌가 아닌 경우"),
-            @ApiResponse(responseCode = "404", description = "받는 계좌 없음")
+            @ApiResponse(responseCode = "404", description = "받는 계좌 없음"),
+            @ApiResponse(responseCode = "409", description = "같은 키의 요청이 처리 중"),
+            @ApiResponse(responseCode = "422", description = "같은 키로 다른 내용의 요청")
     })
     @PostMapping("/transfer")
-    public ResponseEntity<Map<String, String>> transfer(
-            @Valid @RequestBody TransferRequest request) {
-        accountService.transfer(request);
-        return ResponseEntity.ok(Map.of("message", "이체 완료"));
+    public ResponseEntity<TransferResponse> transfer(
+            @Valid @RequestBody TransferRequest request,
+            @RequestHeader(IDEMPOTENCY_KEY) String idempotencyKey) {
+        return ResponseEntity.ok(accountTransferService.transfer(request, idempotencyKey));
     }
 }

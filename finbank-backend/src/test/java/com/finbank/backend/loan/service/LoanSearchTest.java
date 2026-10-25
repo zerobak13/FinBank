@@ -88,7 +88,7 @@ class LoanSearchTest {
     /** 검색 대상 데이터를 직접 만든다 (실행 API를 태우면 계좌 잔액·심사 룰에 묶여 조합을 만들기 어렵다) */
     private LoanAccount givenLoan(Member owner, Account linked, LoanProduct product,
                                   BigDecimal amount, LocalDate executedAt, LoanAccountStatus status) {
-        LoanApplication application = new LoanApplication(owner, product, amount, 12);
+        LoanApplication application = new LoanApplication(owner, product, linked, amount, 12);
         application.approve();
         application.markExecuted();
         loanApplicationRepository.saveAndFlush(application);

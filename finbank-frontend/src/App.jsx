@@ -7,6 +7,7 @@ import { useAuth } from "./hooks/useAuth";
 import { useAccount } from "./hooks/useAccount";
 import { authApi } from "./api/authApi";
 import { accountApi } from "./api/accountApi";
+import { newIdempotencyKey } from "./api/idempotency";
 import LoanPage from "./pages/LoanPage";
 
 export default function App() {
@@ -92,7 +93,8 @@ export default function App() {
     if (!selected) return;
     try {
       setLoading(true);
-      await accountApi.transfer({ fromAccountId: selected.account.id, toAccountNumber: to, amount: Number(amt) });
+      const key = newIdempotencyKey(); // 버튼 1회 = 키 1개
+      await accountApi.transfer({ fromAccountId: selected.account.id, toAccountNumber: to, amount: Number(amt) }, key);
       notify("이체 완료", "success");
       await refreshAfterTransaction(selected.account.id);
     } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
@@ -118,7 +120,7 @@ export default function App() {
           handleLogin={handleLogin} handleRegister={handleRegister} handleLogout={handleLogout}
       >
         {menu === "loan" ? (
-            <LoanPage auth={auth} loading={loading} setLoading={setLoading} notify={notify}
+            <LoanPage auth={auth} accounts={accounts} loading={loading} setLoading={setLoading} notify={notify}
                       onBalanceChanged={refreshSilently} />
         ) : (
         <div className="max-w-6xl mx-auto px-6 py-6 grid grid-cols-12 gap-6">

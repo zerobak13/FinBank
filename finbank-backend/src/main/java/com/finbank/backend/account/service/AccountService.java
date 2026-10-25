@@ -5,7 +5,9 @@ import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.account.domain.TransactionLog;
 import com.finbank.backend.account.domain.TransactionType;
 import com.finbank.backend.account.dto.*;
+import com.finbank.backend.common.idempotency.IdempotentExecutor;
 import com.finbank.backend.exception.BusinessException;
+import com.finbank.backend.exception.ErrorCode;
 import com.finbank.backend.exception.ForbiddenException;
 import com.finbank.backend.exception.NotFoundException;
 import com.finbank.backend.account.repository.AccountRepository;
@@ -42,13 +44,16 @@ public class AccountService {
     private final MemberRepository memberRepository;
     private final AccountRepository accountRepository;
     private final TransactionLogRepository transactionLogRepository;
+    private final IdempotentExecutor idempotentExecutor;
 
     public AccountService(MemberRepository memberRepository,
                           AccountRepository accountRepository,
-                          TransactionLogRepository transactionLogRepository) {
+                          TransactionLogRepository transactionLogRepository,
+                          IdempotentExecutor idempotentExecutor) {
         this.memberRepository = memberRepository;
         this.accountRepository = accountRepository;
         this.transactionLogRepository = transactionLogRepository;
+        this.idempotentExecutor = idempotentExecutor;
     }
 
     private Member getCurrentMember() {
@@ -133,18 +138,18 @@ public class AccountService {
     public void deposit(Long accountId, BigDecimal amount) {
         // BigDecimal 비교는 부호 검사(signum)로 — compareTo(ZERO)와 동일하지만 의도가 명확하다.
         if (amount == null || amount.signum() <= 0) {
-            throw new BusinessException("입금 금액은 0보다 커야 합니다.");
+            throw new BusinessException(ErrorCode.INVALID_AMOUNT, "입금 금액은 0보다 커야 합니다.");
         }
 
         Member member = getCurrentMember();
 
-        // 동시 입금 시 lost update 방지를 위해 비관적 락으로 조회한다.
-        // (이 조회가 계좌의 첫 조회이므로 항상 커밋된 최신 잔액을 읽는다.)
-        Account account = accountRepository.findWithLockingById(accountId)
-                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
-        //본인 계좌 체크
-        if (!account.getMember().getId().equals(member.getId())) {
-            throw new ForbiddenException("본인 계좌만 입금할 수 있습니다.");
+        // 권한 확인 → 락 순서. 남의 계좌에 락이 걸리는 일 자체를 막는다.
+        // (락 조회가 계좌 엔티티의 첫 조회이므로 항상 커밋된 최신 잔액을 읽는다.)
+        assertOwner(accountId, member, "본인 계좌만 입금할 수 있습니다.");
+        Account account = lockAccount(accountId);
+
+        if (account.isLocked()) {
+            throw new BusinessException(ErrorCode.ACCOUNT_LOCKED, "잠금된 계좌에는 입금할 수 없습니다.");
         }
 
         // 잔액 증가
@@ -161,23 +166,22 @@ public class AccountService {
     @Transactional
     public void withdraw(Long accountId, BigDecimal amount) {
         if (amount == null || amount.signum() <= 0) {
-            throw new BusinessException("출금 금액은 0보다 커야 합니다.");
+            throw new BusinessException(ErrorCode.INVALID_AMOUNT, "출금 금액은 0보다 커야 합니다.");
         }
 
         Member member = getCurrentMember();
 
-        // 동시 출금 시 lost update 방지를 위해 비관적 락으로 조회한다.
-        // (이 조회가 계좌의 첫 조회이므로 항상 커밋된 최신 잔액을 읽는다.)
-        Account account = accountRepository.findWithLockingById(accountId)
-                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
-        //본인 계좌 체크
-        if (!account.getMember().getId().equals(member.getId())) {
-            throw new ForbiddenException("본인 계좌만 출금할 수 있습니다.");
+        // 권한 확인 → 락 순서 (입금과 동일)
+        assertOwner(accountId, member, "본인 계좌만 출금할 수 있습니다.");
+        Account account = lockAccount(accountId);
+
+        if (account.isLocked()) {
+            throw new BusinessException(ErrorCode.ACCOUNT_LOCKED, "잠금된 계좌에서는 출금할 수 없습니다.");
         }
 
         // 잔액 비교는 반드시 compareTo — equals는 스케일까지 비교한다 (1000 != 1000.0000)
         if (account.getBalance().compareTo(amount) < 0) {
-            throw new BusinessException("잔액이 부족합니다.");
+            throw new BusinessException(ErrorCode.INSUFFICIENT_BALANCE);
         }
 
         // 잔액 감소
@@ -204,13 +208,31 @@ public class AccountService {
      * 비관적 락이 무력화되고 lost update가 발생한다.<br>
      * 이를 막기 위해 잔액이 걸린 두 계좌는 오직 락 조회로만 적재한다.
      * (받는 계좌는 락 순서 결정을 위해 ID만 프로젝션으로 조회한다.)</p>
+     *
+     * <p><b>권한 확인은 락보다 먼저.</b> 출금 계좌의 소유자를 프로젝션으로 확인한 뒤에만 락을 건다.
+     * 소유자는 바뀌지 않는 값이라 락 없이 읽어도 안전하고, 남의 계좌 ID를 넣은 요청이
+     * 그 계좌(와 받는 계좌)에 락을 걸어 정상 거래를 붙잡아두는 일을 막는다.</p>
      */
     @Transactional
-    public void transfer(TransferRequest request) {
+    public TransferResponse transfer(TransferRequest request) {
+        return transfer(request, null);
+    }
+
+    /**
+     * 멱등 이체의 트랜잭션 본체 — {@link AccountTransferService}가 키를 선점한 뒤 호출한다.
+     *
+     * <p>응답 스냅샷 확정({@code complete})을 이체와 <b>같은 트랜잭션</b>에서 수행한다.
+     * "돈이 움직인 사실"과 "COMPLETED 기록"이 한 커밋에 묶여야, 커밋 직후 장애가 나도
+     * 재시도가 이체를 한 번 더 실행하지 않는다(상환과 동일한 원칙).</p>
+     *
+     * @param idempotencyKey null이면 멱등 처리 없이 이체만 수행한다(내부·테스트용)
+     */
+    @Transactional
+    public TransferResponse transfer(TransferRequest request, String idempotencyKey) {
         Member member = getCurrentMember();
 
         if (request.getAmount() == null || request.getAmount().signum() <= 0) {
-            throw new BusinessException("이체 금액은 0보다 커야 합니다.");
+            throw new BusinessException(ErrorCode.INVALID_AMOUNT, "이체 금액은 0보다 커야 합니다.");
         }
 
         Long fromId = request.getFromAccountId();
@@ -220,8 +242,11 @@ public class AccountService {
                 .orElseThrow(() -> new NotFoundException("받는 계좌를 찾을 수 없습니다."));
 
         if (fromId.equals(toId)) {
-            throw new BusinessException("같은 계좌로는 이체할 수 없습니다.");
+            throw new BusinessException(ErrorCode.SAME_ACCOUNT_TRANSFER);
         }
+
+        // 락보다 권한 확인이 먼저다 (위 Javadoc 참고)
+        assertOwner(fromId, member, "본인 계좌에서만 이체할 수 있습니다.");
 
         // 데드락 방지를 위해 항상 ID 오름차순으로 락을 획득한다.
         // 이 락 조회가 두 계좌의 첫 조회이므로 항상 커밋된 최신 잔액을 읽는다.
@@ -237,16 +262,12 @@ public class AccountService {
         Account from = firstLocked.getId().equals(fromId) ? firstLocked : secondLocked;
         Account to   = firstLocked.getId().equals(toId)   ? firstLocked : secondLocked;
 
-        if (!from.getMember().getId().equals(member.getId())) {
-            throw new ForbiddenException("본인 계좌에서만 이체할 수 있습니다.");
-        }
-
         if (from.isLocked() || to.isLocked()) {
-            throw new BusinessException("잠금된 계좌가 있습니다.");
+            throw new BusinessException(ErrorCode.ACCOUNT_LOCKED);
         }
 
         if (from.getBalance().compareTo(request.getAmount()) < 0) {
-            throw new BusinessException("잔액이 부족합니다.");
+            throw new BusinessException(ErrorCode.INSUFFICIENT_BALANCE);
         }
 
         // 잔액 이동
@@ -263,6 +284,36 @@ public class AccountService {
         transactionLogRepository.save(
                 TransactionLog.transferIn(from, to, request.getAmount(), to.getBalance())
         );
+
+        TransferResponse response = new TransferResponse(
+                from.getId(),
+                to.getAccountNumber(),
+                MoneyPolicy.toWon(request.getAmount()),
+                MoneyPolicy.toWon(from.getBalance()),
+                "이체 완료");
+
+        if (idempotencyKey != null) {
+            idempotentExecutor.complete(idempotencyKey, response);
+        }
+        return response;
+    }
+
+    /**
+     * 계좌 소유자를 락 없이 확인한다(프로젝션 — 엔티티를 1차 캐시에 올리지 않는다).
+     * 계좌가 없으면 404, 본인 것이 아니면 403.
+     */
+    private void assertOwner(Long accountId, Member member, String forbiddenMessage) {
+        Long ownerId = accountRepository.findOwnerIdById(accountId)
+                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+        if (!ownerId.equals(member.getId())) {
+            throw new ForbiddenException(forbiddenMessage);
+        }
+    }
+
+    /** 비관적 쓰기 락으로 계좌를 적재한다 — 반드시 해당 계좌 엔티티의 첫 조회여야 한다. */
+    private Account lockAccount(Long accountId) {
+        return accountRepository.findWithLockingById(accountId)
+                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
     }
 
 

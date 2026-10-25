@@ -42,6 +42,14 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     @Query("select a.id from Account a where a.member.id = :memberId and a.locked = false order by a.id asc")
     List<Long> findActiveIdsByMemberId(@Param("memberId") Long memberId);
 
+    /**
+     * 계좌 소유 회원 ID만 조회한다(프로젝션).
+     * 입출금·이체에서 락을 걸기 전에 권한을 확인하는 용도 — 엔티티를 적재하지 않으므로
+     * 뒤이은 락 조회가 낡은 값을 읽는 문제가 생기지 않는다.
+     */
+    @Query("select a.member.id from Account a where a.id = :id")
+    Optional<Long> findOwnerIdById(@Param("id") Long id);
+
     /** 비관적 쓰기 락(SELECT ... FOR UPDATE)으로 계좌 조회 — 입출금·이체의 동시성 제어에 사용 */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Account> findWithLockingById(Long id);

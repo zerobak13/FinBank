@@ -13,7 +13,8 @@ services:
       MYSQL_PASSWORD: finpass1234
       TZ: Asia/Seoul
     ports:
-      - "3306:3306"
+      # 호스트 포트가 다른 프로세스에 물려 있으면 MYSQL_HOST_PORT=3307 docker compose up 처럼 바꿔서 실행
+      - "${MYSQL_HOST_PORT:-3306}:3306"
     volumes:
       # 스키마 두 개(개발용/테스트용)를 최초 기동 시 생성
       - ./docker/mysql-init:/docker-entrypoint-initdb.d

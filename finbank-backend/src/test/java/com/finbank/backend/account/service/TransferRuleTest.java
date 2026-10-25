@@ -3,7 +3,9 @@ package com.finbank.backend.account.service;
 import com.finbank.backend.account.domain.Account;
 import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.account.dto.TransferRequest;
+import com.finbank.backend.common.idempotency.IdempotentExecutor;
 import com.finbank.backend.exception.BusinessException;
+import com.finbank.backend.exception.ErrorCode;
 import com.finbank.backend.exception.ForbiddenException;
 import com.finbank.backend.exception.NotFoundException;
 import com.finbank.backend.account.repository.AccountRepository;
@@ -41,6 +43,7 @@ class TransferRuleTest {
     @Mock MemberRepository memberRepository;
     @Mock AccountRepository accountRepository;
     @Mock TransactionLogRepository transactionLogRepository;
+    @Mock IdempotentExecutor idempotentExecutor;
 
     @InjectMocks AccountService accountService;
 
@@ -81,7 +84,8 @@ class TransferRuleTest {
     /**
      * 현재 transfer() 구현의 계좌 조회 흐름에 맞춘 공통 스텁.
      * 1) 받는 계좌 ID 프로젝션: findIdByAccountNumber(toNumber)
-     * 2) 락 획득(각 행의 첫 조회): findWithLockingById(fromId), findWithLockingById(toId)
+     * 2) 출금 계좌 소유자 프로젝션(락 이전 권한 확인): findOwnerIdById(fromId)
+     * 3) 락 획득(각 행의 첫 조회): findWithLockingById(fromId), findWithLockingById(toId)
      */
     private void stubTransferLookups(Account from, Account to) {
         // mock 메서드 호출을 미리 지역변수로 추출한다.
@@ -90,8 +94,10 @@ class TransferRuleTest {
         Long fromId = from.getId();
         Long toId = to.getId();
         String toNumber = to.getAccountNumber();
+        Long fromOwnerId = from.getMember().getId();
 
         when(accountRepository.findIdByAccountNumber(toNumber)).thenReturn(Optional.of(toId));
+        when(accountRepository.findOwnerIdById(fromId)).thenReturn(Optional.of(fromOwnerId));
         when(accountRepository.findWithLockingById(fromId)).thenReturn(Optional.of(from));
         when(accountRepository.findWithLockingById(toId)).thenReturn(Optional.of(to));
     }
@@ -120,6 +126,8 @@ class TransferRuleTest {
         ForbiddenException ex = assertThrows(ForbiddenException.class, () -> accountService.transfer(req));
         assertTrue(ex.getMessage().contains("본인 계좌"));
 
+        // 권한이 없으면 락 자체를 걸지 않는다 — 남의 계좌를 붙잡아두는 요청을 차단
+        verify(accountRepository, never()).findWithLockingById(any());
         verify(transactionLogRepository, never()).save(any());
         verify(accountRepository, never()).save(any(Account.class));
     }
@@ -151,6 +159,7 @@ class TransferRuleTest {
 
         BusinessException ex = assertThrows(BusinessException.class, () -> accountService.transfer(req));
         assertTrue(ex.getMessage().contains("잠금"));
+        assertEquals(ErrorCode.ACCOUNT_LOCKED, ex.getErrorCode());
 
         verify(transactionLogRepository, never()).save(any());
         verify(accountRepository, never()).save(any(Account.class));
@@ -168,6 +177,7 @@ class TransferRuleTest {
 
         BusinessException ex = assertThrows(BusinessException.class, () -> accountService.transfer(req));
         assertTrue(ex.getMessage().contains("잔액"));
+        assertEquals(ErrorCode.INSUFFICIENT_BALANCE, ex.getErrorCode());
 
         verify(transactionLogRepository, never()).save(any());
         verify(accountRepository, never()).save(any(Account.class));
@@ -198,5 +208,59 @@ class TransferRuleTest {
 
         verify(accountRepository, times(2)).save(any(Account.class));
         verify(transactionLogRepository, times(2)).save(any());
+    }
+
+    // ── 입금 · 출금: 잠금 계좌 / 권한 확인 순서 ─────────────────────────
+
+    @Test
+    @DisplayName("잠금 계좌에 입금하면 ACCOUNT_LOCKED, 잔액·로그 변경 없음")
+    void deposit_lockedAccount_throwsAccountLocked() {
+        Account acc = mockAccount(10L, 1L, "111-111", new BigDecimal("1000"), true);
+        when(accountRepository.findOwnerIdById(10L)).thenReturn(Optional.of(1L));
+        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(acc));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> accountService.deposit(10L, new BigDecimal("500")));
+
+        assertEquals(ErrorCode.ACCOUNT_LOCKED, ex.getErrorCode());
+        verify(acc, never()).deposit(any());
+        verify(transactionLogRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("잠금 계좌에서 출금하면 ACCOUNT_LOCKED, 잔액·로그 변경 없음")
+    void withdraw_lockedAccount_throwsAccountLocked() {
+        Account acc = mockAccount(10L, 1L, "111-111", new BigDecimal("1000"), true);
+        when(accountRepository.findOwnerIdById(10L)).thenReturn(Optional.of(1L));
+        when(accountRepository.findWithLockingById(10L)).thenReturn(Optional.of(acc));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> accountService.withdraw(10L, new BigDecimal("500")));
+
+        assertEquals(ErrorCode.ACCOUNT_LOCKED, ex.getErrorCode());
+        verify(acc, never()).withdraw(any());
+        verify(transactionLogRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("남의 계좌에서 출금하면 403 — 락을 걸기 전에 거부한다")
+    void withdraw_notMyAccount_rejectedBeforeLock() {
+        when(accountRepository.findOwnerIdById(10L)).thenReturn(Optional.of(999L));
+
+        assertThrows(ForbiddenException.class,
+                () -> accountService.withdraw(10L, new BigDecimal("500")));
+
+        verify(accountRepository, never()).findWithLockingById(any());
+    }
+
+    @Test
+    @DisplayName("남의 계좌에 입금하면 403 — 락을 걸기 전에 거부한다")
+    void deposit_notMyAccount_rejectedBeforeLock() {
+        when(accountRepository.findOwnerIdById(10L)).thenReturn(Optional.of(999L));
+
+        assertThrows(ForbiddenException.class,
+                () -> accountService.deposit(10L, new BigDecimal("500")));
+
+        verify(accountRepository, never()).findWithLockingById(any());
     }
 }
