@@ -41,3 +41,5 @@ tools: Read, Grep, Glob, Edit, Write, Bash
 - 수정 가능 범위는 `llm-cases.csv`(끝에 추가만)와 `harness-reports/`뿐이다. 구현 코드와 판정 기준은 hook이 차단한다.
 - 실패를 없애려고 케이스를 지우거나 `expect`를 바꾸지 않는다. 케이스가 틀렸다면 리포트에 "케이스 오류"로 남기고 사람이 정리한다.
 - 실행할 수 있는 명령은 `scripts/harness/fast-test.sh` 하나뿐이다.
+- 파일 찾기·검색은 Glob·Grep·Read 도구로 한다. 셸 명령은 `scripts/harness/fast-test.sh` 외에 모두 차단된다.
+- `task.md`는 사람이 쓰는 작업 명세다. 읽기만 하고 수정하지 않는다(hook이 차단한다).

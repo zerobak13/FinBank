@@ -20,7 +20,7 @@ def project_root(event, env):
 
 
 def decide(event, env):
-    """(허용 여부, 이유, 대상, 역할). 입출력이 없는 순수 함수라 단위 테스트가 쉽다."""
+    """(허용 여부, 이유, 대상, 역할, 분류). 입출력이 없는 순수 함수라 단위 테스트가 쉽다."""
     root = project_root(event, env)
     tool = event.get("tool_name") or ""
     tool_input = event.get("tool_input") or {}
@@ -29,20 +29,20 @@ def decide(event, env):
     if tool in WRITE_TOOLS:
         path = tool_input.get("file_path") or tool_input.get("notebook_path")
         if not path:
-            return False, "수정 대상 경로를 알 수 없음", "", role
+            return False, "수정 대상 경로를 알 수 없음", "", role, "input"
         rel = rules.normalize(path, root)
         allowed, reason = rules.check_write(role, rel, env.get("FINBANK_ALLOW_ORACLE_EDIT") == "1")
-        return allowed, reason, rel if rel is not None else path, role
+        return allowed, reason, rel if rel is not None else path, role, rules.category(tool, rel)
     if tool == "Read":
         path = tool_input.get("file_path") or ""
         rel = rules.normalize(path, root)
         allowed, reason = rules.check_read(role, rel)
-        return allowed, reason, rel if rel is not None else path, role
+        return allowed, reason, rel if rel is not None else path, role, rules.category(tool, rel)
     if tool == "Bash":
         command = tool_input.get("command") or ""
         allowed, reason = rules.check_command(role, command)
-        return allowed, reason, command, role
-    return True, "검사 대상 아님", "", role
+        return allowed, reason, command, role, rules.category(tool, None)
+    return True, "검사 대상 아님", "", role, ""
 
 
 def log_denial(root, record):
@@ -65,7 +65,7 @@ def main():
         sys.stderr.write("[하네스 가드] 입력을 해석할 수 없어 차단합니다: %s\n" % e)
         return 2
 
-    allowed, reason, target, role = decide(event, env)
+    allowed, reason, target, role, kind = decide(event, env)
     if allowed:
         return 0
 
@@ -74,6 +74,7 @@ def main():
         "role": role,
         "agent_type": event.get("agent_type"),
         "tool": event.get("tool_name"),
+        "category": kind,
         "target": target,
         "reason": reason,
     })

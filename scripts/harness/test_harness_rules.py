@@ -95,6 +95,14 @@ class WriteRuleTest(unittest.TestCase):
         self.assertTrue(rules.check_write(rules.HUMAN, ORACLE_FILE, oracle_override=True)[0])
         self.assertFalse(rules.check_write(rules.HUMAN, SECRET, oracle_override=True)[0])
 
+    def test_task_spec_is_human_only_even_inside_reports(self):
+        task = "harness-reports/demo/task.md"
+        self.assertTrue(rules.is_oracle(task))
+        self.assertFalse(rules.check_write(VERI, task)[0])
+        self.assertTrue(rules.check_write(VERI, "harness-reports/demo/verify-2.md")[0])
+        self.assertFalse(rules.check_write(rules.HUMAN, task)[0])
+        self.assertTrue(rules.check_write(rules.HUMAN, task, oracle_override=True)[0])
+
     def test_unknown_role_is_blocked(self):
         self.assertFalse(rules.check_write(rules.UNKNOWN, MAIN_FILE)[0])
         self.assertFalse(rules.check_command(rules.UNKNOWN, rules.FAST_TEST)[0])
@@ -148,6 +156,7 @@ class HookTest(unittest.TestCase):
         with open(os.path.join(self.root, ".harness", "guard-log.jsonl"), encoding="utf-8") as f:
             record = json.loads(f.readline())
         self.assertEqual(record["role"], IMPL)
+        self.assertEqual(record["category"], "oracle")
         self.assertTrue(record["target"].endswith("LoanInvariant.java"))
 
     def test_subagent_can_edit_its_own_scope(self):
@@ -160,7 +169,9 @@ class HookTest(unittest.TestCase):
         ok = {"tool_name": "Bash", "tool_input": {"command": "scripts/harness/fast-test.sh"}}
         bad = {"tool_name": "Bash", "tool_input": {"command": "sed -i '' 's/a/b/' CLAUDE.md"}}
         self.assertEqual(self.run_hook(ok, FINBANK_AGENT_ROLE="verifier").returncode, 0)
-        self.assertEqual(self.run_hook(bad, FINBANK_AGENT_ROLE="verifier").returncode, 2)
+        blocked = self.run_hook(bad, FINBANK_AGENT_ROLE="verifier")
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("Glob·Grep·Read", blocked.stderr.decode("utf-8"))  # 막을 때 대안을 알려준다
 
     def test_secret_read_is_blocked_for_everyone(self):
         event = {"tool_name": "Read", "tool_input": {"file_path": os.path.join(self.root, SECRET)}}

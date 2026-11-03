@@ -27,6 +27,7 @@ ORACLE_FILES = (
 # ── 에이전트 산출물 ───────────────────────────────────────────────
 LLM_CASES = "finbank-backend/src/test/resources/harness/llm-cases.csv"
 REPORTS_DIR = "harness-reports/"
+TASK_FILE = "task.md"  # harness-reports/<작업명>/task.md — 사람이 쓰는 작업 명세 (판정 기준)
 
 # ── 역할별 수정 허용 범위 (여기 없는 경로는 전부 차단) ─────────────
 ROLE_WRITE = {
@@ -79,7 +80,10 @@ def normalize(path, root):
 
 
 def is_oracle(rel):
-    return rel in ORACLE_FILES or any(rel.startswith(d) for d in ORACLE_DIRS)
+    if rel in ORACLE_FILES or any(rel.startswith(d) for d in ORACLE_DIRS):
+        return True
+    # 작업 명세는 검증 에이전트의 리포트 폴더 안에 있어도 사람이 쓰는 판정 기준이다
+    return rel.startswith(REPORTS_DIR) and posixpath.basename(rel) == TASK_FILE
 
 
 def is_secret(rel):
@@ -111,6 +115,19 @@ def check_write(role, rel, oracle_override=False):
     return False, "알 수 없는 역할"
 
 
+def category(tool, rel):
+    """차단 기록 분류 — 무해한 탐색 명령 차단과 실제 판정 기준 수정 시도를 구분해서 세기 위함."""
+    if tool == "Bash":
+        return "command"
+    if rel is None:
+        return "outside"
+    if is_secret(rel):
+        return "secret"
+    if is_oracle(rel):
+        return "oracle"
+    return "scope"
+
+
 def check_read(role, rel):
     """읽기 가능 여부. 비밀 정보만 막는다(에이전트도 코드 전체는 읽어야 일을 할 수 있다)."""
     if rel is not None and is_secret(rel):
@@ -124,4 +141,4 @@ def check_command(role, command):
         return True, "허용"
     if role in AGENT_ROLES and (command or "").strip() in AGENT_COMMANDS:
         return True, "허용"
-    return False, "에이전트는 %s 만 실행할 수 있음" % FAST_TEST
+    return False, "에이전트는 %s 만 실행할 수 있음 — 파일 찾기·검색은 Glob·Grep·Read 도구를 쓸 것" % FAST_TEST

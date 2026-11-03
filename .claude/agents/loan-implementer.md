@@ -20,6 +20,8 @@ tools: Read, Grep, Glob, Edit, Write, Bash
   "명세 확인 필요"로 보고한다.
 - 테스트를 통과시키려고 입력 검증을 느슨하게 하거나, 예외를 삼키거나, 특정 입력만 특별 처리하지 않는다.
 - 실행할 수 있는 명령은 `scripts/harness/fast-test.sh` 하나뿐이다. 커밋은 사람이 한다.
+- 파일 찾기·검색은 Glob·Grep·Read 도구로 한다. 셸 명령은 `scripts/harness/fast-test.sh` 외에 모두 차단된다.
+- `harness-reports/<작업명>/task.md`의 명세와 완료 조건이 최우선 기준이다.
 - 금액·동시성·예외 규칙은 `CLAUDE.md`를 따른다.
 
 ## 실패 리포트 읽는 법
