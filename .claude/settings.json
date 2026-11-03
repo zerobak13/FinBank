@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(scripts/harness/fast-test.sh)",
+      "Bash(./scripts/harness/fast-test.sh)"
+    ],
+    "deny": [
+      "Read(**/application-local.yml)",
+      "Edit(**/application-local.yml)",
+      "Read(**/.env*)",
+      "Edit(**/.env*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/harness/oracle-guard.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
