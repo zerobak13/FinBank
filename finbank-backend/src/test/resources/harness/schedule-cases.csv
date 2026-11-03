@@ -1,9 +1,11 @@
-id,type,principal,rate,term,executedAt,source,note
-H-001,EQUAL_PAYMENT,1,0.199,60,2026-01-15,manual,최소 원금 1원 × 장기 — 월 납입액 0원
-H-002,EQUAL_PRINCIPAL,7,0.055,12,2026-01-15,manual,원금 < 기간 — 회차 원금 0원 후 마지막 회차가 전액 흡수
-H-003,BULLET,10000000,0.068,12,2026-01-31,manual,말일 실행 — 2월 납기 월말 보정
-H-004,EQUAL_PAYMENT,10000000,0.068,12,2028-02-29,manual,윤일 실행
-H-005,EQUAL_PAYMENT,50000000,0.059,60,2026-12-31,manual,상품 최대 한도·최장 기간·연말 실행
-H-006,EQUAL_PRINCIPAL,30000000,0.0000001,36,2026-01-15,manual,극소 금리 — 이자 0원 수렴
-H-007,EQUAL_PAYMENT,999999999999,0.199,12,2026-01-15,manual,초대형 원금 — 중간 계산 정밀도
-H-008,BULLET,1,0,1,2026-01-15,manual,최소 원금·무이자·1개월
+id,type,principal,rate,term,executedAt,expect,source,note
+H-001,EQUAL_PAYMENT,1,0.199,60,2026-01-15,ok,manual,최소 원금 1원 × 장기 — 월 납입액 0원
+H-002,EQUAL_PRINCIPAL,7,0.055,12,2026-01-15,ok,manual,원금 < 기간 — 회차 원금 0원 후 마지막 회차가 전액 흡수
+H-003,BULLET,10000000,0.068,12,2026-01-31,ok,manual,말일 실행 — 2월 납기 월말 보정
+H-004,EQUAL_PAYMENT,10000000,0.068,12,2028-02-29,ok,manual,윤일 실행
+H-005,EQUAL_PAYMENT,50000000,0.059,60,2026-12-31,ok,manual,상품 최대 한도·최장 기간·연말 실행
+H-006,EQUAL_PRINCIPAL,30000000,0.0000001,36,2026-01-15,ok,manual,극소 금리 — 이자 0원 수렴
+H-007,EQUAL_PAYMENT,999999999999,0.199,12,2026-01-15,ok,manual,초대형 원금 — 중간 계산 정밀도
+H-008,BULLET,1,0,1,2026-01-15,ok,manual,최소 원금·무이자·1개월
+R-001,EQUAL_PAYMENT,59,0.2,11,2026-08-31,reject,regression,반올림 누적으로 10회차 잔액 −1원 — 무작위 탐색으로 발견 (PR #20)
+R-002,EQUAL_PAYMENT,1000001,0.199,387,2026-01-15,reject,regression,고금리·초장기 — 복리 누적으로 만기 전 잔액 음수 (PR #20)
