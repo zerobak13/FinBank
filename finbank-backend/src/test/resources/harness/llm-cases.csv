@@ -1,1 +1,4 @@
 id,type,principal,rate,term,executedAt,expect,source,note
+L-001,EQUAL_PRINCIPAL,1000.5,0.05,12,2026-01-15,reject,llm,원 미만 원금 — validate가 정수 여부를 안 봐서 basePrincipal 절사 후 끝수 0.5원이 마지막 회차 원금으로 흘러감
+L-002,EQUAL_PRINCIPAL,10000000,0.2000001,12,2026-01-15,reject,llm,법정최고금리 20% 바로 위 — validate에 상한 검사가 없고 MAX_LEGAL_RATE가 스케줄 생성에 쓰이지 않음
+L-003,EQUAL_PRINCIPAL,1000000,0.05,12,+999999999-06-30,reject,llm,LocalDate 상한 근처 실행일 — 만기일 계산 plusMonths가 IllegalArgumentException 대신 DateTimeException을 던짐
