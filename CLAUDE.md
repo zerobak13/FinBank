@@ -28,6 +28,8 @@
 - 새 예외는 `ErrorCode` 기반 `BusinessException`.
 - DB 스키마 변경은 새 Flyway 버전 파일로만. 이미 적용된 마이그레이션은 수정하지 않는다.
 - 테스트 계좌번호는 `TestAccountNumbers.next()`.
+- 상환 스케줄 엔진의 입력 계약: 원금은 양의 정수(원), 연이율 0~20%, 기간 1~600개월, 실행일 필수.
+  계약 밖은 `IllegalArgumentException`으로 거부 (판정 기준: `InputContract`, `LoanInvariant` INP-01~04).
 - 커밋 메시지: `feat:`/`fix:`/`test:`/`docs:`/`chore:` + 한국어 요약.
 
 ## 판정 기준 (사람만 수정)
@@ -37,6 +39,7 @@
 - `finbank-backend/src/test/java/com/finbank/backend/loan/domain/calculator/`
 - `finbank-backend/src/test/resources/harness/schedule-cases.csv`
 - `finbank-backend/build.gradle`, `scripts/harness/`, `.claude/`, `.github/workflows/`, `CLAUDE.md`
+- 작업 명세 `harness-reports/<작업명>/task.md`
 
 판정 기준을 바꿔야 할 때: `FINBANK_ALLOW_ORACLE_EDIT=1 claude`로 실행하고, PR에 `oracle-approved` 라벨을 붙인다.
 비밀 정보(`application-local.yml`, `.env*`)는 누구도 읽거나 쓸 수 없다.

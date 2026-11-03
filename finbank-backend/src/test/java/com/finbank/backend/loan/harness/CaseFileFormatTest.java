@@ -86,6 +86,8 @@ class CaseFileFormatTest {
                 "L-008,BULLET,1000.5,0.05,12,2026-01-31,ok,llm,원 미만 원금",   // 정상 케이스 원금
                 "L-009,BULLET,1000,0.05,12,2026-02-30,ok,llm,없는 날짜",        // 날짜
                 "L-010,BULLET,1000,0.05,12,2026-01-31,maybe,llm,기대값 오류",   // expect
+                "L-012,BULLET,1000,0.25,12,2026-01-31,ok,llm,상한 초과 금리",   // INP-02
+                "L-013,BULLET,1000,0.05,601,2026-01-31,ok,llm,상한 초과 기간",  // INP-03
                 "L-011,BULLET,1000,0.05,12,2026-01-31,ok,llm,\"따옴표\"");      // 따옴표
         for (String row : malformed) {
             assertTrue(!checkRow("", row, llm, LLM_ID).isEmpty(), "잡아내야 하는 행: " + row);
@@ -131,8 +133,9 @@ class CaseFileFormatTest {
         BigDecimal principal = decimal(at + "원금 ", c[2], p);
         BigDecimal rate = decimal(at + "금리 ", c[3], p);
         Integer term = integer(at + "기간 ", c[4], p);
+        LocalDate executedAt = null;
         try {
-            LocalDate.parse(c[5]);
+            executedAt = LocalDate.parse(c[5]);
         } catch (DateTimeParseException e) {
             p.add(at + "실행일 형식 " + c[5] + " (yyyy-MM-dd, 실제 있는 날짜)");
         }
@@ -145,15 +148,10 @@ class CaseFileFormatTest {
         if (note.isBlank()) {
             p.add(at + "근거(note)가 비어 있다");
         }
-        if ("ok".equals(expect)) {
-            if (principal != null && (principal.signum() <= 0 || principal.stripTrailingZeros().scale() > 0)) {
-                p.add(at + "정상 케이스의 원금은 양의 정수(원) — " + c[2]);
-            }
-            if (rate != null && rate.signum() < 0) {
-                p.add(at + "정상 케이스의 금리는 0 이상 — " + c[3]);
-            }
-            if (term != null && term < 1) {
-                p.add(at + "정상 케이스의 기간은 1개월 이상 — " + c[4]);
+        // 정상(ok) 케이스는 입력 계약 안에 있어야 한다 — 계약 밖이면 '거부되어야 할 입력'이므로 케이스 오류
+        if ("ok".equals(expect) && principal != null && rate != null && term != null && executedAt != null) {
+            for (LoanInvariant rule : InputContract.violations(principal, rate, term, executedAt)) {
+                p.add(at + "expect=ok인데 입력 계약 위반 — " + rule.id() + " " + rule.description());
             }
         }
         return p;

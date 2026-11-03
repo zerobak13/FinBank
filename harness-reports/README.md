@@ -5,7 +5,7 @@
 
 ```
 harness-reports/<작업명>/
-  task.md        작업 명세 (사람)
+  task.md        작업 명세 (사람만 — 판정 기준이라 에이전트는 수정 불가)
   verify-1.md    1라운드 검증 리포트 (검증 에이전트)
   verify-2.md    ...
   summary.md     라운드 수·반려 사유·잡은 버그·차단 기록 요약
