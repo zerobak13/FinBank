@@ -20,7 +20,7 @@ public class EqualPrincipalGenerator implements RepaymentScheduleGenerator {
     @Override
     public List<ScheduleLine> generate(BigDecimal principal, BigDecimal annualRate,
                                        int termMonths, LocalDate executedAt) {
-        validate(principal, annualRate, termMonths);
+        validate(principal, annualRate, termMonths, executedAt);
 
         BigDecimal r = annualRate.divide(BigDecimal.valueOf(12), MoneyPolicy.CALC_SCALE, MoneyPolicy.CALC_ROUND);
         BigDecimal basePrincipal = principal.divide(BigDecimal.valueOf(termMonths), 0, MoneyPolicy.INTEREST_ROUND);
