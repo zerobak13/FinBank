@@ -1,0 +1,36 @@
+name: Harness Guard
+
+# 판정 기준(불변식·하네스·케이스 파일·가드 스크립트·에이전트 설정·CI)이 바뀐 PR은
+# 사람이 oracle-approved 라벨을 붙여야 통과한다. 1인 저장소에서는 CODEOWNERS 승인이
+# 실효가 없어서(본인 PR을 본인이 승인할 수 없음) 라벨로 승인을 표시한다.
+# 경로 목록의 단일 출처: scripts/harness/harness_rules.py
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [ main, develop ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: 판정 기준 보호
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 기준 브랜치와 비교하려면 전체 이력이 필요하다
+
+      - name: 가드 규칙 단위 테스트
+        run: python3 -m unittest discover -s scripts/harness -p 'test_*.py' -v
+
+      - name: 판정 기준 변경 검사
+        if: github.event_name == 'pull_request'
+        env:
+          ORACLE_APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'oracle-approved') }}
+        run: python3 scripts/harness/diff_guard.py --base "origin/${{ github.base_ref }}" --role pr

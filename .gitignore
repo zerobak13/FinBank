@@ -31,3 +31,8 @@ yarn-debug.log*
 yarn-error.log*
 # 개인 리뷰 노트 (저장소 제외)
 CODE_REVIEW.md
+
+# 하네스 — 로컬 가드 기록, 파이썬 캐시, 개인 Claude Code 설정
+.harness/
+__pycache__/
+.claude/settings.local.json
