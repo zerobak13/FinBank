@@ -15,14 +15,14 @@ export const loanApi = {
     apply: (payload) =>
         client("/api/loans/applications", {
             method: "POST",
-            body: JSON.stringify(payload), // { productId, requestedAmount, termMonths }
+            body: JSON.stringify(payload), // { productId, accountId, requestedAmount, termMonths }
         }),
     getMyApplications: () => client("/api/loans/applications"),
     cancelApplication: (id) =>
         client(`/api/loans/applications/${id}`, { method: "DELETE" }),
 
     // ── 실행 · 상환 (C3) ───────────────────────────────
-    /** 대출 실행 — 입금 계좌는 서버가 회원의 활성 계좌 중에서 고른다 */
+    /** 대출 실행 — 신청할 때 지정한 계좌로 입금된다 */
     execute: (applicationId, key) =>
         idempotentPost(`/api/loans/applications/${applicationId}/execute`, { key }),
 

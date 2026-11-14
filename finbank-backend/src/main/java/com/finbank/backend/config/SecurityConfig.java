@@ -42,15 +42,13 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/refresh",
                                 "/api/auth/logout",
-                                "/h2-console/**",
                                 // Swagger UI
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**"
                         ).permitAll()
                         .anyRequest().authenticated()
-                )
-                .headers(headers -> headers.frameOptions(frame -> frame.disable()));
+                );
 
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

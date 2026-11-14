@@ -49,7 +49,7 @@ public class OverdueHistory {
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal penaltyAccrued = BigDecimal.ZERO;
 
-    /** 마지막 가산일 — 배치 재실행 시 이중 가산 방지 */
+    /** 마지막 가산일 — 가산 배치의 Reader가 {@code lastAccruedAt < 기준일} 조건으로 읽어 이중 가산을 막는다 */
     private LocalDate lastAccruedAt;
 
     /** 연체 개시 팩토리 (연체 감지 배치가 호출) */
@@ -71,11 +71,6 @@ public class OverdueHistory {
     /** 연체 해소 (연체 회차 상환 시) */
     public void resolve(LocalDate resolvedAt) {
         this.resolvedAt = resolvedAt;
-    }
-
-    /** 해당 일자에 이미 가산됐는지 (배치 멱등 판별) */
-    public boolean alreadyAccruedOn(LocalDate date) {
-        return this.lastAccruedAt != null && !this.lastAccruedAt.isBefore(date);
     }
 
     public boolean isResolved() {

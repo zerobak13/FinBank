@@ -1,6 +1,5 @@
 package com.finbank.backend.loan.repository;
 
-import com.finbank.backend.loan.domain.ApplicationStatus;
 import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.loan.domain.LoanApplication;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -33,7 +32,4 @@ public interface LoanApplicationRepository extends JpaRepository<LoanApplication
                and a.status = com.finbank.backend.loan.domain.ApplicationStatus.APPROVED
             """)
     int markExecutedIfApproved(@Param("id") Long id);
-
-    /** 회원의 특정 상태 신청 목록 */
-    List<LoanApplication> findByMemberAndStatus(Member member, ApplicationStatus status);
 }
