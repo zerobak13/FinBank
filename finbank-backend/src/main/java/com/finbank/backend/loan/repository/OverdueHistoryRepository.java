@@ -1,6 +1,5 @@
 package com.finbank.backend.loan.repository;
 
-import com.finbank.backend.loan.domain.LoanAccount;
 import com.finbank.backend.loan.domain.OverdueHistory;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,9 +14,6 @@ public interface OverdueHistoryRepository extends JpaRepository<OverdueHistory, 
 
     /** 진행 중(미해소) 연체 전체 */
     List<OverdueHistory> findByResolvedAtIsNull();
-
-    /** 특정 대출의 진행 중 연체 */
-    List<OverdueHistory> findByLoanAccountAndResolvedAtIsNull(LoanAccount loanAccount);
 
     /** 특정 회차의 진행 중 연체 (상환 시 해소 처리용) */
     Optional<OverdueHistory> findByScheduleIdAndResolvedAtIsNull(Long scheduleId);

@@ -38,9 +38,6 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, Long>,
     @Query("select l from LoanAccount l where l.member.id = :memberId order by l.id desc")
     List<LoanAccount> findByMemberIdOrderByIdDesc(@Param("memberId") Long memberId);
 
-    /** 신청 ID로 실행된 대출 조회 */
-    Optional<LoanAccount> findByApplicationId(Long applicationId);
-
     /**
      * 회원의 활성(ACTIVE/OVERDUE) 대출 잔액 합계 — 자동심사 한도 룰에서 사용.
      */

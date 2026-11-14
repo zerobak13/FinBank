@@ -1,7 +1,5 @@
 package com.finbank.backend.loan.domain;
 
-import com.finbank.backend.exception.BusinessException;
-import com.finbank.backend.exception.ErrorCode;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -77,15 +75,9 @@ public class RepaymentSchedule {
         return s;
     }
 
-    /** 납부 완료: PENDING/OVERDUE → PAID */
-    public void markPaid() {
-        if (this.status != ScheduleStatus.PENDING && this.status != ScheduleStatus.OVERDUE) {
-            throw new BusinessException(ErrorCode.INVALID_STATE,
-                    "이미 처리된 회차입니다. (현재 상태: " + this.status + ")");
-        }
-        this.status = ScheduleStatus.PAID;
-        this.paidAt = LocalDateTime.now();
-    }
+    // 납부 완료(→ PAID)와 중도상환 무효화(→ CANCELED)는 도메인 메서드가 아니라
+    // 리포지토리의 조건부 UPDATE(markPaidIfPayable, cancelPendingByLoanAccountId)로만 전이한다.
+    // 엔티티를 읽어 상태를 바꾸면 REPEATABLE READ 스냅샷 때문에 동시 요청 둘 다 통과할 수 있다(check-then-act).
 
     /** 연체 전이: PENDING → OVERDUE (배치가 호출) */
     public void markOverdue() {
@@ -94,14 +86,4 @@ public class RepaymentSchedule {
         }
     }
 
-    /** 전액 중도상환으로 무효화: PENDING → CANCELED (삭제 대신 상태 보존) */
-    public void cancelByPrepayment() {
-        if (this.status == ScheduleStatus.PENDING) {
-            this.status = ScheduleStatus.CANCELED;
-        }
-    }
-
-    public boolean isOverdue() {
-        return this.status == ScheduleStatus.OVERDUE;
-    }
 }

@@ -89,7 +89,7 @@ class LoanApplicationServiceTest {
     }
 
     @Test
-    @DisplayName("활성 계좌 보유 + 한도 내 신청 → 즉시 APPROVED")
+    @DisplayName("본인 계좌 지정 + 한도 내 신청 → 즉시 APPROVED")
     void apply_approved() {
         Account account = createActiveAccount();
 
