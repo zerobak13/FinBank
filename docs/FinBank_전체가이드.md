@@ -1,7 +1,7 @@
 ---
 title: "FinBank 완전 가이드"
 subtitle: "수신·여신·배치부터 불변식 하네스·AI 에이전트 하네스까지 — 설계·코드·DB·테스트 전부 한 권으로"
-date: "2026-11-11 개정판 (초판 2026-07-28)"
+date: "2026-11-15 개정판 (초판 2026-07-28)"
 toc-title: "목차"
 ---
 
@@ -31,10 +31,13 @@ toc-title: "목차"
 16. **실패 기록 12건** — 무엇이 왜 깨졌고 어떻게 고쳤나
 17. **면접 예상 질문과 답**
 18. **한 장 요약**
+19. **처음부터 따라가며 보기** — 코드 읽기 길잡이 7단계 (어떤 파일을 어떤 순서로, 무엇을 확인하며)
 
 부록 A는 실제 코드를 계층별로, 부록 B는 용어 사전입니다.
 
-## 0-1. 이번 개정에서 바뀐 것 (2026-11-05, 11-11 보완)
+> **코드를 직접 열어 보며 이해하고 싶다면 19장부터 시작하세요.** 19장은 이 문서의 나머지 장을 "읽는 순서"로 엮어 둔 길잡이입니다.
+
+## 0-1. 이번 개정에서 바뀐 것 (2026-11-05 · 11-11 · 11-15)
 
 초판(2026-07-28) 이후에 한 일을 더하고, 초판에서 실제 코드와 어긋나 있던 곳을 바로잡았습니다.
 
@@ -48,7 +51,9 @@ toc-title: "목차"
 | 11-4 | 알고 있는 빈틈 — 엔진의 거부 예외가 API까지 오면 500 |
 | 13장 | 불변식 하네스 — 불변식 카탈로그 25개, 판정기, 케이스 파일, 무작위 탐색, 입력 계약 |
 | 14장 | AI 에이전트 하네스 — 구현·검증 역할 분리, hook·diff 가드·CI 가드, 두 터미널 실전 기록 |
-| 14-7, 14-9 | 구현 1라운드·검증 2라운드 결과와 판정 기준 보강 (11-11 보완) |
+| 14-7, 14-9 | 구현 1라운드·검증 2라운드 결과와 판정 기준 보강 (11-11) |
+| 19장 | 처음부터 따라가며 보기 — 7단계 코드 읽기 길잡이, 직접 해 보기, 점검표 (11-15) |
+| 0-2 | PR #21 머지 후 전체 코드 점검 결과 (11-15) |
 | 15-2 | 판정 기준 가드 CI (Harness Guard) |
 | 16장 ⑨~⑫ | 실패 기록 4건 |
 | 17장 Q9~Q15 | 배치 운영·하네스 관련 질문 |
@@ -67,6 +72,23 @@ toc-title: "목차"
 | 부록 A-3 | 연체 후보 조회 쿼리를 단순화해 적음 | 실제 쿼리 (`join fetch` 포함) |
 | 부록 A-6 | 멱등키 필수 API 3개 | 4개 (이체 추가) |
 | 부록 A-7 | 화면마다 키를 다루는 예시 | 공통 모듈 `api/idempotency.js` |
+| 부록 A-1 | 상환 회차의 `markPaid()`·`cancelByPrepayment()` 등을 현역처럼 소개 | 쓰이지 않는 메서드였고 11-15에 삭제 — 상태 전이는 조건부 UPDATE로만 |
+
+## 0-2. 전체 코드 점검 (2026-11-15)
+
+PR #21이 main에 들어간 뒤 저장소 전체를 다시 훑었습니다. **동작이 틀린 곳은 없었고**, 쓰이지 않는 코드와 낡은 설명을 정리했습니다(커밋 `5ba3e8d`, `171f5df`).
+
+| 발견 | 조치 |
+|---|---|
+| 상환 회차의 `markPaid()`·`cancelByPrepayment()`·`isOverdue()` — 아무 데서도 안 씀. 상태 전이는 조건부 UPDATE(8-7)로만 하는데 옛 방식이 남아 있었음 | 삭제, 이유를 주석으로 |
+| 연체 이력의 `alreadyAccruedOn()` — 가산 Reader 쿼리가 같은 역할 | 삭제 |
+| 리포지토리 미사용 조회 5개 (그중 하나는 V7 때 삭제된 심사 룰용) | 삭제 |
+| `SecurityConfig`의 `/h2-console/**` 허용과 `frameOptions` 비활성화 — H2 시절 잔재 | 삭제 (프레임 보호 기본값으로 복귀) |
+| `.idea/` IDE 설정이 `.gitignore`보다 먼저 커밋돼 추적 중 | 추적 해제 |
+| `finbank-backend/README.md`가 "H2 인메모리" 초기 설명 | 루트 README 안내로 교체 |
+| 프론트 `loanApi.js` 주석·테스트 이름에 V7 이전 용어 | 수정 |
+
+점검 방법: 리포지토리·도메인의 모든 공개 메서드를 호출처와 대조하는 스크립트로 훑고, 설정 파일과 문서의 숫자를 코드와 대조했습니다. 확인은 빠른 테스트 457개(재컴파일 포함)와 가드 테스트 30개.
 
 ---
 
@@ -1993,7 +2015,7 @@ Mac에 Claude Code CLI를 설치하고, 먼저 가짜 입력 JSON으로 hook을 
 
 라운드 결과는 `harness-reports/<작업명>/`에 남깁니다 — `task.md`(명세), `implement-1.md`…(구현 기록 — 구현 AI는 이 폴더에 쓸 수 없어 사람이 정리), `verify-1.md`, `verify-2.md`…(검증 리포트), `summary.md`(라운드 수·반려 사유·잡은 버그·차단 기록 요약).
 
-## 14-9. 지금 상태와 한계 (2026-11-11)
+## 14-9. 지금 상태와 한계 (2026-11-15)
 
 | 단계 | 상태 |
 |---|---|
@@ -2003,7 +2025,8 @@ Mac에 Claude Code CLI를 설치하고, 먼저 가짜 입력 JSON으로 hook을 
 | 구현 1라운드 | 완료 — 반려 없이 통과 |
 | 검증 2라운드 + 판정 기준 보강 | 완료 |
 | 라운드 요약(`summary.md`)·README 하네스 섹션 | 완료 |
-| push → PR + `oracle-approved` 라벨 → 머지 | **다음 할 일** |
+| push → PR #21 (`oracle-approved` 라벨) → CI·Harness Guard 통과 → main 머지 `4f79188` | 완료 (2026-11-11) |
+| 머지 후 전체 코드 점검·정리 (0-2) | 완료 (2026-11-15) |
 | 라운드 자동화(스크립트 루프), 새 기능을 이 하네스로 개발 | 이후 계획 |
 
 **한계도 적어 둡니다**
@@ -2348,7 +2371,313 @@ UPDATE는 항상 최신 커밋본을 기준으로 조건을 평가하므로, **�
 
 ---
 
-*FinBank — 2026.11.11 기준 (개정판). 테스트 537개, 마이그레이션 V1~V7, 불변식 25개, 전 구간 CI 검증 + 판정 기준 가드.*
+*FinBank — 2026.11.15 기준 (개정판). 테스트 537개, 마이그레이션 V1~V7, 불변식 25개, 전 구간 CI 검증 + 판정 기준 가드.*
+
+\newpage
+
+# 19. 처음부터 따라가며 보기 — 코드 읽기 길잡이
+
+> 이 장은 **"이 프로젝트를 처음부터 다시 이해하려면 어디서부터 어떻게 봐야 하나"**에 답합니다. 앞 장들이 "무엇을 왜 만들었나"라면, 이 장은 **어떤 파일을 어떤 순서로 열어서 무엇을 확인하는지**입니다. 7단계이고, 한 단계에 한두 시간이면 됩니다. 단계마다 "열어볼 파일 → 보면서 답할 질문 → 직접 해 보기 → 설명할 수 있어야 하는 것"으로 되어 있습니다.
+
+## 19-0. 시작하기 전에 — 세 가지 습관
+
+**1. 파일을 열면 맨 위 주석(Javadoc)부터 읽습니다.** 이 프로젝트는 거의 모든 클래스 맨 위에 "왜 이렇게 만들었나"가 적혀 있습니다. 코드보다 그 글이 먼저입니다.
+
+**2. 테스트 이름이 곧 요구사항입니다.** `@DisplayName("같은 멱등키 100개 재시도 동시 도착 → 이체는 정확히 1회")` 같은 이름을 읽으면 그 코드가 지켜야 할 규칙을 알 수 있습니다. 구현을 읽기 전에 테스트 이름을 먼저 훑으세요.
+
+**3. 막히면 git 역사를 봅니다.** 이 저장소는 커밋 메시지에 이유를 적어 뒀습니다.
+
+```bash
+git log --oneline --reverse          # 처음부터 어떤 순서로 만들었나
+git log --oneline -- finbank-backend/src/main/java/com/finbank/backend/account/service/AccountService.java   # 이 파일이 어떻게 바뀌어 왔나
+git show 63bbb2d                     # 특정 커밋에서 무엇이 왜 바뀌었나 (PR #19)
+```
+
+## 19-1. 1단계 — 켜 보기와 지도 그리기
+
+**목표**: 돌아가는 걸 직접 보고, 폴더 지도를 머리에 넣는다.
+
+**직접 해 보기**
+
+```bash
+git clone https://github.com/zerobak13/FinBank.git && cd FinBank
+docker compose up                      # 백엔드 :8080 + MySQL :3306 (처음엔 2~3분)
+```
+
+브라우저에서 `http://localhost:8080/swagger-ui.html`을 엽니다. API 목록이 보이면 성공입니다. 이 화면이 이 프로젝트의 **전체 메뉴판**입니다 — 인증 4개, 계좌 7개, 대출 상품·신청·계약.
+
+그다음 DB 없이 도는 테스트를 돌려 봅니다. 이 프로젝트에서 가장 빨리 "초록불"을 볼 수 있는 명령입니다.
+
+```bash
+scripts/harness/fast-test.sh           # 계산 엔진 + 불변식 하네스 457개, 수십 초
+```
+
+**열어볼 파일 (순서대로)**
+
+| 순서 | 파일 | 보면서 답할 질문 |
+|---|---|---|
+| 1 | `README.md` | 이 프로젝트가 증명하려는 것이 무엇인가? (동시성·멱등·배치·하네스) |
+| 2 | `docker-compose.yml` | 서버와 DB가 어떻게 연결되나? `DB_URL`이 `mysql:3306`인 이유는? (컨테이너 안에서는 서비스 이름으로 찾는다) |
+| 3 | `docker/mysql-init/01-create-databases.sql` | 스키마가 왜 둘(`finbank`, `finbank_test`)인가? |
+| 4 | `finbank-backend/src/main/resources/application.yml` | `ddl-auto: validate`는 무슨 뜻인가? `batch.job.enabled: false`는 왜? |
+| 5 | `finbank-backend/build.gradle` | 의존성에 무엇이 있나(JPA·Security·QueryDSL·Batch·Flyway). `test` 태스크가 `perf` 태그를 왜 빼나? |
+| 6 | `CLAUDE.md` | 코드 규칙 요약 — 사람이 읽어도 가장 짧은 "이 프로젝트의 약속" |
+
+폴더 지도는 4-1을 옆에 두고 보세요. 핵심은 하나입니다 — **`account/`는 수신, `loan/`은 여신, `common/`은 둘이 같이 쓰는 돈 규칙과 멱등키.**
+
+**설명할 수 있어야 하는 것**: "FinBank는 무엇이고, 코드는 어디에 어떻게 나뉘어 있나"를 1분 안에.
+
+## 19-2. 2단계 — 요청 하나가 지나가는 길 (회원가입 → 로그인 → 계좌 → 입금)
+
+**목표**: HTTP 요청이 들어와서 DB에 닿기까지, 어떤 클래스를 어떤 순서로 거치는지 **한 번 끝까지 따라간다.** 이 길을 알면 나머지 기능은 전부 같은 길의 변주입니다.
+
+```
+브라우저/Swagger
+  → JwtAuthenticationFilter   (출입증 검사)
+  → AccountController         (요청 받기, 검증)
+  → AccountService            (규칙, 트랜잭션)
+  → Account.deposit()         (잔액 바꾸기 — 도메인 규칙)
+  → AccountRepository         (DB에 쓰기)
+  → MySQL accounts / transaction_logs
+```
+
+**열어볼 파일 (순서대로)**
+
+| 순서 | 파일 | 보면서 답할 질문 |
+|---|---|---|
+| 1 | `FinbankBackendApplication.java` | 시작점. 여기서 시작해 스프링이 나머지를 찾는다 |
+| 2 | `config/SecurityConfig.java` | 어떤 URL이 로그인 없이 열려 있나? (`/api/auth/*`, Swagger) 나머지는 전부 `authenticated()` |
+| 3 | `auth/controller/AuthController.java` → `auth/service/AuthService.java` | `register`는 비밀번호를 어떻게 저장하나? (`passwordEncoder.encode` — BCrypt) `login`은 무엇을 돌려주나? (access + refresh) |
+| 4 | `auth/security/JwtTokenProvider.java` | 토큰을 만들고(서명) 검사하는 곳. 만료 시간은 `application.yml`의 `jwt.expiration-ms` |
+| 5 | `auth/security/JwtAuthenticationFilter.java` | **모든 요청이 지나는 문.** 헤더의 `Bearer` 토큰을 검사해 "이 사람은 누구"를 `SecurityContext`에 넣는다. DB를 조회하지 않는 이유는? (서명이 자체 증명) |
+| 6 | `member/service/CurrentMemberProvider.java` | "지금 로그인한 사람"을 꺼내는 **단일 창구** |
+| 7 | `account/controller/AccountController.java` | 엔드포인트 7개. 컨트롤러가 얼마나 얇은지 보세요 — 검증(`@Valid`)만 하고 서비스에 넘긴다 |
+| 8 | `account/service/AccountService.java`의 `deposit()` | 순서를 세어 보세요: 금액 검증 → 현재 회원 → **권한 확인(`assertOwner`) → 락 조회(`lockAccount`)** → 잠금 검사 → `account.deposit()` → 원장 기록 |
+| 9 | `account/domain/Account.java` | `deposit`/`withdraw` 두 메서드뿐이고 `setBalance`가 없다. 왜? (A-1) |
+| 10 | `account/domain/TransactionLog.java` | 수정 메서드가 없다 — append-only 원장 |
+| 11 | `resources/db/migration/V1__init_schema.sql` | 표 3개(`members`, `accounts`, `transaction_logs`)의 컬럼을 엔티티 필드와 대조 |
+
+**직접 해 보기 (Swagger)**
+
+1. `POST /api/auth/register` — 이메일·이름·비밀번호로 가입. 응답의 `accessToken`을 복사
+2. 오른쪽 위 **Authorize** 버튼 → `Bearer <토큰>` 입력
+3. `POST /api/accounts` — 계좌 개설 (응답 헤더 `Location` 확인)
+4. `POST /api/accounts/{id}/deposit` — 입금
+5. `GET /api/accounts/{id}/transactions` — 원장에 `DEPOSIT` 한 줄이 남았는지
+6. 토큰을 지우고(Authorize → Logout) 4번을 다시 → 거부됨(**403**, 출입증 없음). 다른 계정으로 가입해 그 토큰으로 4번 → **403** (남의 계좌). 응답 본문의 메시지가 다르다는 것을 비교해 보세요
+
+DB를 직접 보고 싶으면:
+
+```bash
+docker exec -it finbank-mysql mysql -ufinuser -pfinpass1234 finbank
+SELECT id, account_number, balance FROM accounts;
+SELECT type, amount, balance_after FROM transaction_logs;
+```
+
+**설명할 수 있어야 하는 것**: "입금 요청 하나가 어떤 클래스를 순서대로 거치고, 각 클래스가 무엇을 책임지나." 그리고 "왜 잔액은 `Account.deposit()`으로만 바꾸나."
+
+## 19-3. 3단계 — 돈이 틀어지지 않게 (동시성)
+
+**목표**: 이 프로젝트의 심장(5-4)을 **코드와 테스트로** 확인한다.
+
+**열어볼 파일**
+
+| 순서 | 파일 | 보면서 답할 질문 |
+|---|---|---|
+| 1 | `account/repository/AccountRepository.java` | `findWithLockingById`의 `@Lock(PESSIMISTIC_WRITE)` — SQL로는 무엇인가? (`SELECT … FOR UPDATE`) `findIdByAccountNumber`·`findOwnerIdById`가 **ID만** 돌려주는 이유는? (1차 캐시 오염 방지) |
+| 2 | `account/service/AccountService.java`의 `transfer(request, idempotencyKey)` | 한 줄씩: 받는 계좌 ID만 조회 → 같은 계좌 거부 → **권한 확인** → `min/max`로 락 순서 → 두 번 락 조회 → 잠금 검사 → 잔액 검사 → 출금·입금 → 원장 2줄 → `idempotentExecutor.complete` |
+| 3 | `test/…/account/service/WithdrawConcurrencyTest.java` | 10만 원 계좌에 7만 원 출금 2건 동시 → 1건만 성공. **테스트가 어떻게 "동시"를 만드나?** (`CountDownLatch`로 출발선을 맞춘다) |
+| 4 | `test/…/AccountServiceDeadlockTest.java` | 반대 방향 이체 100회에 데드락 0건 — 락 순서 규칙의 증거 |
+| 5 | `test/…/ConcurrencyBenchmarkTest.java` | 락 없음 vs 비관적 락 비교표를 **출력**한다. 돌려서 표를 직접 보세요 |
+
+**직접 해 보기 — 일부러 깨 보기 (가장 효과 좋은 공부)**
+
+MySQL이 떠 있는 상태에서(`docker compose up` 유지) 테스트를 돌립니다. 테스트는 `finbank_test` 스키마를 씁니다.
+
+```bash
+cd finbank-backend
+DB_USERNAME=finuser DB_PASSWORD=finpass1234 JWT_SECRET_KEY=LocalComposeJwtSecretKeyForFinbank1234567890 \
+./gradlew test --tests 'com.finbank.backend.account.service.WithdrawConcurrencyTest'
+```
+
+통과를 확인한 뒤, `AccountRepository.java`에서 `@Lock(LockModeType.PESSIMISTIC_WRITE)` 한 줄을 **주석 처리**하고 같은 테스트를 다시 돌립니다. **빨간불**이 나고, 출금 2건이 다 성공해 잔액이 음수이거나 lost update가 난 것을 보게 됩니다. 다 봤으면 `git checkout -- .`로 되돌립니다.
+
+> 왜 이게 공부가 되나? "락이 필요하다"는 글을 백 번 읽는 것보다, **락을 뺐을 때 돈이 사라지는 걸 한 번 보는 게** 낫습니다. 면접에서 "락 없이 돌리면 어떻게 되나요?"에 본 대로 답할 수 있습니다.
+
+**설명할 수 있어야 하는 것**: lost update·데드락·stale read 세 문제와 각각의 해결(락·ID 순서·프로젝션), 그리고 "권한 확인이 락보다 먼저"인 이유(5-3 보강).
+
+## 19-4. 4단계 — 돈의 규칙과 계산 엔진 (순수 자바)
+
+**목표**: 스프링도 DB도 없는 **가장 순수한 코드**에서 이자 계산을 이해한다. 하네스(7단계)의 대상이기도 합니다.
+
+**열어볼 파일**
+
+| 순서 | 파일 | 보면서 답할 질문 |
+|---|---|---|
+| 1 | `common/MoneyPolicy.java` | 상수 7개. 중간 계산 10자리·확정 금액 원 미만 절사·365일·법정 최고금리 20%. **왜 한 파일에 모았나** |
+| 2 | `loan/domain/calculator/RepaymentScheduleGenerator.java` | 인터페이스. `validate()`에 입력 계약 INP-01~04가 그대로 있다(2026-11 구현 에이전트가 쓴 코드) |
+| 3 | `loan/domain/calculator/EqualPaymentGenerator.java` | 원리금균등. 맨 위 주석의 공식과 "지원하지 않는 입력" 설명을 읽고, 루프 안의 `if (balance.signum() < 0) throw`를 찾는다 (13-5의 버그 수정) |
+| 4 | `EqualPrincipalGenerator.java`, `BulletGenerator.java` | 같은 틀의 변주. 셋 다 마지막 회차가 끝수를 흡수한다 |
+| 5 | `OverdueInterestCalculator.java`, `PrepaymentFeeCalculator.java`, `AccruedInterestCalculator.java` | 일할 계산기 3종. 공식이 `MoneyPolicy`만 쓰는지 확인 |
+| 6 | `test/…/calculator/ScheduleGeneratorTest.java` | **숫자가 적힌 테스트.** 1,000만 원·6%·12개월의 1회차 이자 50,000원, 월 상환금 860,664원, 12회차 860,662원(끝수 조정) |
+| 7 | `test/…/calculator/ScheduleGeneratorPropertyTest.java` | 240조합 — 숫자 대신 **규칙**(불변식)으로 판정 |
+
+**직접 해 보기**
+
+```bash
+scripts/harness/fast-test.sh          # 이 단계의 테스트는 전부 여기에 포함된다 (DB 불필요)
+```
+
+그다음 `MoneyPolicy.INTEREST_ROUND`를 `DOWN`에서 `HALF_UP`으로 바꿔 보고 다시 돌립니다. `ScheduleGeneratorTest`의 확정값 테스트가 깨지면서 **"정책 한 줄이 모든 금액을 바꾼다"**를 보게 됩니다. 되돌리세요.
+
+**설명할 수 있어야 하는 것**: 왜 `double`이 아니라 `BigDecimal`인가, 왜 중간은 10자리고 끝만 절사하나, 끝수 조정이 뭔가, 원리금균등이 거부하는 조합이 왜 생기나.
+
+## 19-5. 5단계 — 여신 흐름 (상품 → 신청·심사 → 실행 → 상환)
+
+**목표**: 2단계에서 배운 "요청의 길"이 여신에서는 어떻게 두 겹(껍데기 + 본체)이 되는지 본다.
+
+**열어볼 파일 (순서대로)**
+
+| 순서 | 파일 | 보면서 답할 질문 |
+|---|---|---|
+| 1 | `resources/db/migration/V4__create_loan_tables.sql` | 표 6개와 **제약조건**(`uq_loan_account_application` 등). 맨 아래 `INSERT`가 기본 상품 3개 |
+| 2 | `loan/domain/LoanProduct.java`, `LoanApplication.java`, `LoanAccount.java` | `LoanAccount.execute()`가 상품 값을 **복사**하는 줄 4개(스냅샷). `LoanApplication`의 상태 전이 메서드 |
+| 3 | `loan/service/LoanApplicationService.java`의 `apply()` | **입력 검증(422)과 심사(룰)의 경계.** 금액·기간 범위 → 계좌 지정 검증 → 룰 순회 → approve/reject |
+| 4 | `loan/service/review/` 4개 파일 | `LoanReviewer` 인터페이스 + 룰 2개. 룰을 하나 더 만든다면 어떤 파일만 추가하면 되나? (서비스는 안 건드린다) |
+| 5 | `loan/service/LoanExecutionService.java` → `LoanExecutionProcessor.java` | 껍데기(트랜잭션 없음, 멱등키)와 본체(`@Transactional`, 7단계). **왜 클래스를 나눴나**는 껍데기 맨 위 주석에 |
+| 6 | `loan/repository/LoanApplicationRepository.java`의 `markExecutedIfApproved` | 조건부 UPDATE. `WHERE status = APPROVED`가 핵심 |
+| 7 | `loan/service/LoanRepaymentService.java` → `LoanRepaymentProcessor.java` | `repay()`: 락 순서(계좌 → 대출) → 다음 회차 찾기 → **`markPaidIfPayable` 조건부 UPDATE** → 출금 → 원금 감소 → 연체 해소. `prepayAll()`: 경과이자 + 수수료 |
+| 8 | `loan/repository/RepaymentScheduleRepository.java` | `markPaidIfPayable`과 `cancelPendingByLoanAccountId` — 상태 전이가 **도메인 메서드가 아니라 UPDATE문**인 이유 (8-7) |
+| 9 | `loan/repository/LoanAccountRepositoryImpl.java` | QueryDSL 동적 검색. 조건 메서드가 `null`을 돌려주면 그 조건이 빠진다 |
+| 10 | `test/…/loan/service/LoanExecutionServiceTest.java`, `LoanRepaymentServiceTest.java` | 테스트 이름만 쭉 읽어도 요구사항 목록이 된다 |
+
+**직접 해 보기 (Swagger, 2단계의 토큰 그대로)**
+
+1. `GET /api/loans/products` — 상품 3개
+2. `POST /api/loans/applications` — `productId`, `accountId`(2단계에서 만든 계좌), `requestedAmount: 10000000`, `termMonths: 12` → 응답 `status: APPROVED`
+3. `POST /api/loans/applications/{id}/execute` — **헤더 `Idempotency-Key`에 아무 UUID**를 넣는다. 없으면 400. 응답에 상환 스케줄 12줄
+4. `GET /api/accounts/{id}` — 잔액이 1,000만 원 늘었는지
+5. `POST /api/loans/{loanId}/repayments` — 새 UUID로. 응답 `installmentNo: 1`
+6. 5번을 **같은 UUID**로 한 번 더 → 같은 응답이 돌아오는데 잔액은 그대로 (멱등)
+7. 5번을 **새 UUID**로 → `installmentNo: 2`
+
+**설명할 수 있어야 하는 것**: 심사와 검증의 차이, 스냅샷이 왜 필요한가, Service와 Processor를 왜 나눴나, 조건부 UPDATE가 왜 check-then-act를 없애나.
+
+## 19-6. 6단계 — 멱등키의 속
+
+**목표**: 5단계에서 "같은 키면 같은 응답"을 봤으니, 이제 **어떻게** 그렇게 되는지 본다.
+
+**열어볼 파일**
+
+| 순서 | 파일 | 보면서 답할 질문 |
+|---|---|---|
+| 1 | `common/idempotency/IdempotentExecutor.java` | `run()`의 흐름: 키 검증 → `claim`(선점) → 이미 완료면 재생 → 본 처리 → 실패하면 `release`. **`DataIntegrityViolationException`을 잡는 줄**이 왜 있나 (8-5: 심판은 DB) |
+| 2 | `common/idempotency/IdempotencyStore.java` | 메서드마다 전파 속성이 다르다 — `claim` `REQUIRES_NEW`, `complete` `MANDATORY`, `release` `REQUIRES_NEW`. 각각의 이유는 8-4 표 |
+| 3 | `common/idempotency/RequestHash.java` | 같은 키로 **다른 내용**을 보내는 걸 잡는 장치(422) |
+| 4 | `resources/db/migration/V5__create_idempotency_keys.sql` | `uq_idem_key` UNIQUE 제약 — 동시에 두 요청이 와도 하나만 선점한다 |
+| 5 | `account/service/AccountTransferService.java` | 이체에 같은 실행기를 씌운 모습(8-9). 금액을 `stripTrailingZeros`로 정규화하는 이유 |
+| 6 | `test/…/account/service/TransferIdempotencyTest.java` | 5개 테스트 이름 = 멱등키 요구사항 5개 |
+| 7 | `finbank-frontend/src/api/idempotency.js` | 화면 쪽 규칙: 버튼 1회 = 키 1개, 네트워크 실패만 같은 키로 재시도 |
+
+**직접 해 보기 (Swagger)**: 5단계의 상환 요청을 같은 UUID로 보내되 **`installmentNo`만 바꿔서** 보내 봅니다 → **422** (`IDEMPOTENCY_KEY_MISMATCH`). 같은 키에 다른 내용은 거부됩니다.
+
+**설명할 수 있어야 하는 것**: 왜 키 선점은 별도 트랜잭션이고 응답 확정은 같은 트랜잭션인가(8-4). 100개가 동시에 와도 돈이 한 번만 움직이는 이유.
+
+## 19-7. 7단계 — 배치, 그리고 하네스
+
+### 배치 (10장을 코드로)
+
+| 순서 | 파일 | 보면서 답할 질문 |
+|---|---|---|
+| 1 | `loan/batch/OverdueBatchScheduler.java` | cron `0 0 2 * * *`, 두 잡의 **순서**, 파라미터가 기준일 하나인 이유, 실패해도 앱이 사는 이유 |
+| 2 | `loan/batch/OverdueDetectionJobConfig.java` | Job → Step → Reader/Processor/Writer 조립. `@JobScope`·`@StepScope`가 왜 필요한가 |
+| 3 | `loan/batch/OverdueScheduleReader.java` | **커서 방식** — `lastId`를 기억하고 `PageRequest.of(0, chunkSize)`로 늘 0페이지를 읽는다. 맨 위 주석이 "왜 페이징 Reader를 안 썼나" |
+| 4 | `loan/repository/RepaymentScheduleRepository.java`의 `findOverdueCandidates` | `s.id > :lastId`가 커서 |
+| 5 | `loan/batch/OverdueInterestAccrualJobConfig.java` | Processor에서 `from`(기산점) 계산과 `return null`의 의미 |
+| 6 | `loan/service/LoanRepaymentProcessor.java`의 `resolveOverdueHistory` | 배치가 연 연체를 상환이 닫는다 (실패 기록 ⑥) |
+| 7 | `test/…/loan/batch/OverdueDetectionJobTest.java` | "청크 경계를 넘어도 한 건도 빠뜨리지 않는다 (250건)" — 커서의 증거 |
+
+**직접 해 보기**: 배치 테스트 12개를 돌리고 로그의 `[연체 감지] N건 전이`를 찾아보세요.
+
+```bash
+cd finbank-backend && DB_USERNAME=finuser DB_PASSWORD=finpass1234 JWT_SECRET_KEY=LocalComposeJwtSecretKeyForFinbank1234567890 \
+./gradlew test --tests 'com.finbank.backend.loan.batch.*'
+```
+
+### 하네스 (13·14장을 코드로)
+
+읽는 순서가 중요합니다 — **판정 기준 → 판정기 → 입력 → 가드 → 에이전트 → 기록** 순입니다.
+
+| 순서 | 파일 | 보면서 답할 질문 |
+|---|---|---|
+| 1 | `test/…/loan/harness/LoanInvariant.java` | 불변식 25개의 ID와 한 줄 설명. **이 파일이 채점 기준표**다 |
+| 2 | `test/…/loan/harness/ScheduleInvariants.java` | 규칙 하나가 코드 몇 줄인지 보세요. 위반을 모아 `List<Violation>`으로 돌려준다 |
+| 3 | `test/resources/harness/schedule-cases.csv`, `llm-cases.csv` | 사람 케이스 10건, AI 케이스 32건. `expect`와 `note` 열 |
+| 4 | `test/…/loan/harness/ScheduleCaseFileTest.java` | CSV 한 줄이 어떻게 판정되나. `reject`는 **사유까지** 본다 |
+| 5 | `test/…/loan/harness/RandomExplorationTest.java` | 시드 42, 2만 건. 판정 규칙 두 줄(계약 밖 → 거부, 계약 안 → 불변식) |
+| 6 | `test/…/loan/harness/InputContract.java` | 입력 계약. `MoneyPolicy`를 **일부러 안 쓰는** 이유가 주석에 |
+| 7 | `scripts/harness/harness_rules.py` | 누가 어디를 고칠 수 있나 — 규칙의 **단일 출처**. `check_write`부터 |
+| 8 | `scripts/harness/oracle_guard.py` → `oracle-guard.sh` | hook 판정과 fail-closed |
+| 9 | `.claude/settings.json` | hook이 어디에 등록되나 |
+| 10 | `.claude/agents/loan-implementer.md`, `loan-verifier.md` | 두 AI의 직무기술서 |
+| 11 | `CLAUDE.md` | 모든 AI 세션이 처음 읽는 지침 |
+| 12 | `scripts/harness/diff_guard.py`, `.github/workflows/harness-guard.yml` | 두 번째·세 번째 겹 |
+| 13 | `harness-reports/demo/` — `task.md` → `verify-1.md` → `implement-1.md` → `verify-2.md` → `summary.md` | **실전 기록을 시간 순으로.** AI가 무엇을 찾았고 사람이 무엇을 정했나 |
+
+**직접 해 보기 — hook을 손으로 시험하기** (Claude Code 없이도 됩니다)
+
+```bash
+# 구현 에이전트인 척하고 판정 기준 파일을 고치려 해 본다 → exit 2 (차단)
+EVENT='{"tool_name":"Edit","agent_type":"loan-implementer",
+  "tool_input":{"file_path":"finbank-backend/src/test/java/com/finbank/backend/loan/harness/LoanInvariant.java"}}'
+echo "$EVENT" | scripts/harness/oracle-guard.sh; echo "exit=$?"
+
+# 같은 에이전트가 src/main을 고친다 → exit 0 (허용)
+EVENT='{"tool_name":"Edit","agent_type":"loan-implementer",
+  "tool_input":{"file_path":"finbank-backend/src/main/java/com/finbank/backend/loan/domain/calculator/BulletGenerator.java"}}'
+echo "$EVENT" | scripts/harness/oracle-guard.sh; echo "exit=$?"
+
+python3 -m unittest discover -s scripts/harness -p 'test_*.py'    # 가드 자신의 테스트 30개
+cat .harness/guard-log.jsonl                                       # 방금 차단된 시도가 기록됐는지
+```
+
+Claude Code가 설치돼 있다면 14-4의 `run-agent.sh`로 실제 에이전트를 띄워 보세요. 처음 할 일로는 "판정 기준 파일을 고쳐 봐"라고 시켜서 **거절·차단**을 눈으로 보는 것이 가장 좋습니다.
+
+**설명할 수 있어야 하는 것**: 불변식이 정답 없이 판정하는 원리, 세 겹 강제 장치가 각각 무엇을 막나, 실전에서 AI가 찾은 4건과 사람이 정한 것.
+
+## 19-8. 자주 막히는 곳 — 짧은 문답
+
+**Q. `Service`와 `Processor`가 왜 둘로 나뉘어 있나?**
+한 클래스 안에서 자기 메서드를 부르면 스프링 프록시를 안 타서 `@Transactional`이 안 걸립니다. 멱등키 선점(별도 트랜잭션)과 본 처리(한 트랜잭션)는 경계가 달라서 두 빈으로 나눴습니다 (A-4).
+
+**Q. "1차 캐시"가 뭐길래 자꾸 나오나?**
+JPA가 같은 트랜잭션 안에서 한 번 읽은 엔티티를 기억해 두는 메모장입니다. 락 없이 읽어 둔 낡은 값을, 락 조회가 DB 대신 메모장에서 돌려주는 게 stale read입니다. 그래서 "잔액이 걸린 계좌는 첫 조회를 락 조회로", 그 전에 필요한 값은 "ID만 프로젝션으로" 입니다 (5-4 문제 3).
+
+**Q. 테스트가 왜 DB를 통째로 비우나? 위험하지 않나?**
+그래서 스키마를 둘로 나눴습니다. 테스트는 `finbank_test`만 비웁니다. 개발 데이터가 있는 `finbank`는 건드리지 않습니다 (12-5).
+
+**Q. 왜 상태를 `schedule.markPaid()` 같은 메서드로 안 바꾸고 UPDATE문으로 바꾸나?**
+MySQL의 기본 격리수준에서 일반 SELECT는 트랜잭션 시작 시점의 사진을 봅니다. 락을 기다린 두 번째 요청이 "아직 안 낸 회차"를 볼 수 있습니다. UPDATE는 항상 최신 값으로 조건을 평가하므로 확인과 변경을 한 문장으로 합치면 그 틈이 사라집니다 (8-7). 옛 도메인 메서드는 2026-11 정리 때 삭제했습니다.
+
+**Q. 하네스 테스트가 `src/test` 안에 있는데 왜 "판정 기준"이라고 따로 부르나?**
+같은 테스트 폴더라도 역할이 다릅니다. `loan/harness/`와 `calculator/` 테스트는 **AI가 못 고치는 채점표**이고, 나머지 테스트는 사람이 평소처럼 고치는 테스트입니다. 경계는 `harness_rules.py`의 `ORACLE_DIRS`가 정합니다.
+
+**Q. 어디까지 외워야 하나?**
+외울 건 없습니다. 각 단계 끝의 "설명할 수 있어야 하는 것"을 **코드를 안 보고 말로 설명**할 수 있으면 됩니다. 막히는 항목이 있으면 그 단계의 파일을 다시 엽니다.
+
+## 19-9. 다 읽었다면 — 스스로 점검표
+
+| 단계 | 이걸 설명할 수 있나? |
+|---|---|
+| 1 | FinBank가 증명하려는 것 네 가지, 폴더가 나뉜 기준 |
+| 2 | 입금 요청이 거치는 클래스 순서와 각 클래스의 책임 |
+| 3 | lost update·데드락·stale read와 각각의 해결, 권한 확인이 락보다 먼저인 이유 |
+| 4 | BigDecimal·절사 정책·끝수 조정, 원리금균등이 거부하는 조합 |
+| 5 | 검증 vs 심사, 스냅샷, Service/Processor 분리, 조건부 UPDATE |
+| 6 | 멱등키의 세 트랜잭션 경계, 같은 키 100개가 돈을 한 번만 움직이는 이유 |
+| 7 | 커서 Reader·멱등 3겹·기산점, 불변식 판정 원리, 강제 장치 3겹, 실전 기록 |
+
+7개를 모두 말로 설명할 수 있으면, 이 프로젝트를 **처음부터 끝까지** 이해한 것입니다.
 
 \newpage
 
@@ -2462,20 +2791,23 @@ public void repayPrincipal(BigDecimal principalPortion) {
 
 ```java
 // RepaymentSchedule (상환 회차)
-public void markPaid()           { ... }  // PENDING/OVERDUE → PAID
-public void markOverdue()        { ... }  // PENDING → OVERDUE
-public void cancelByPrepayment() { ... }  // 중도상환 시 남은 회차 → CANCELED (삭제 아님)
-public boolean isOverdue()       { ... }
+public void markOverdue()        { ... }  // PENDING → OVERDUE (연체 감지 배치가 호출)
+// PAID·CANCELED 전이는 도메인 메서드가 아니라 리포지토리의 조건부 UPDATE로만 한다 (아래)
 
 // OverdueHistory (연체 이력)
 public static OverdueHistory open(RepaymentSchedule s, LocalDate start)  // 연체 시작
 public void accrue(BigDecimal penalty, LocalDate accruedAt)              // 이자 가산 + 기산점 전진
-public void resolve(LocalDate resolvedAt)                                // 연체 해소
-public boolean alreadyAccruedOn(LocalDate date)                          // 오늘 이미 붙였나?
+public void resolve(LocalDate resolvedAt)                                // 연체 해소 (상환이 호출)
 public boolean isResolved()
 ```
 
-**메서드 이름이 곧 업무 용어입니다.** `setStatus("PAID")`가 아니라 `markPaid()`라고 쓰면, 코드를 읽는 사람이 **무슨 일이 일어나는지** 바로 압니다.
+```java
+// RepaymentScheduleRepository — 상태 전이는 "확인과 변경을 한 문장으로"
+int markPaidIfPayable(Long scheduleId, LocalDateTime paidAt);   // PENDING/OVERDUE일 때만 PAID, 0행이면 409
+int cancelPendingByLoanAccountId(Long loanAccountId);          // 중도상환 시 PENDING → CANCELED (삭제 아님)
+```
+
+**메서드 이름이 곧 업무 용어입니다.** `setStatus("OVERDUE")`가 아니라 `markOverdue()`라고 쓰면, 코드를 읽는 사람이 **무슨 일이 일어나는지** 바로 압니다. 다만 **동시 요청이 몰리는 전이(PAID·CANCELED)는 일부러 도메인 메서드로 두지 않았습니다.** 엔티티를 읽어 상태를 바꾸면 REPEATABLE READ 스냅샷 때문에 두 요청이 모두 통과할 수 있어서(8-7), 조건부 UPDATE만 남기고 옛 메서드(`markPaid()` 등)는 2026-11-15에 삭제했습니다.
 
 ## A-2. 계산 엔진 — 스프링을 모르는 순수 자바
 
