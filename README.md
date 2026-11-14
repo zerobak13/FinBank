@@ -101,14 +101,15 @@ DB 접속 정보와 JWT 시크릿은 로컬에서 gitignore된 `application-loca
 
 ![FinBank ERD](./finbank_erd.png)
 
-계좌(Account)를 중심으로 거래 로그(Transaction Log)를 분리하여  
-금융 거래 이력 관리와 검증이 가능하도록 모델링했습니다.
+Flyway 마이그레이션 V1~V7 기준 **11개 표**입니다 — 수신·인증 4개(파랑), 여신 6개(초록), 멱등키 1개(노랑). 실선은 FK, 점선은 FK 없이 같은 값을 쓰는 논리 연결이고, 설명에 NULL이 적힌 컬럼만 비어 있을 수 있습니다. 그림의 원본은 [`docs/erd/finbank_erd.mmd`](docs/erd/finbank_erd.mmd)(Mermaid)이고, 키만 남긴 관계도는 [`docs/erd/finbank_erd_keys.png`](docs/erd/finbank_erd_keys.png)입니다.
 
 ### 주요 설계 포인트
-- 회원(Member) 1 : N 계좌(Account)
-- 계좌 간 거래는 `TRANSACTION_LOGS` 테이블에서 관리
-- 입금 / 출금 / 이체를 하나의 로그 테이블로 통합
-- 거래 이후의 잔액(`balance_after`)을 기록하여 이력 추적 가능
+- **원장은 append-only** — `transaction_logs`(수신)와 `loan_transactions`(여신)는 고치거나 지우지 않고, 거래 직후 잔액(`balance_after`)을 함께 적어 시점별 잔액을 추적합니다. 이체는 보내는 쪽(`TRANSFER_OUT`)과 받는 쪽(`TRANSFER_IN`) 두 줄로 남깁니다.
+- **상품 → 신청 → 계약, 조건은 스냅샷** — 대출 계약(`loan_accounts`)은 상품을 FK로 따라가지 않고 금리·연체가산율·중도상환수수료율·상환방식을 실행 시점에 복사합니다. 상품 조건이 바뀌어도 이미 맺은 계약은 그대로입니다.
+- **입금 계좌는 신청할 때 고른다 (V7)** — `loan_applications.linked_account_id`가 실행 때 계약의 연결계좌(`loan_accounts.linked_account_id`)가 되어 대출금 입금과 상환 출금에 쓰입니다.
+- **중복은 DB 제약이 마지막에 막는다** — 신청 1건당 실행 1건(`loan_accounts.application_id` UK), 대출마다 회차 번호 유일(`loan_account_id + installment_no` 복합 UK), 같은 멱등키로 거래 1건(`loan_transactions.idempotency_key` UK), 키 선점 1번(`idempotency_keys.idem_key` UK), 회원당 로그인 연장 토큰 1개(`refresh_tokens.member_id` UK).
+- **조회 경로 인덱스 (V6)** — 대출 검색용 `(member_id, status, executed_at)`, 연체 배치용 `(status, due_date)`.
+- Spring Batch 메타 표(`BATCH_*`)와 `flyway_schema_history`는 프레임워크가 관리하므로 그림에서 뺐습니다.
 
 ---
 
