@@ -12,7 +12,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 대출 신청 상태 전이 단위 테스트 (순수 도메인 — Spring/DB 불필요).
- * 전이표의 허용/금지 케이스를 전부 커버한다.
+ * 심사·취소 전이의 허용/금지 케이스를 커버한다. 실행 전이(APPROVED → EXECUTED)는 조건부 UPDATE라
+ * 도메인 메서드가 없고, 실행 서비스 테스트(이중 실행·미승인 실행 409)와 신청 서비스 테스트(실행된 신청 취소 409)가 지킨다.
  */
 class LoanApplicationTest {
 
@@ -50,23 +51,7 @@ class LoanApplicationTest {
     }
 
     @Test
-    @DisplayName("APPROVED → markExecuted() → EXECUTED")
-    void markExecuted_fromApproved() {
-        LoanApplication app = newApplication();
-        app.approve();
-        app.markExecuted();
-        assertThat(app.getStatus()).isEqualTo(ApplicationStatus.EXECUTED);
-    }
-
-    @Test
-    @DisplayName("승인 없이 markExecuted() 시도 → 409 (APPLIED에서 바로 실행 불가)")
-    void markExecuted_fromApplied_throws() {
-        LoanApplication app = newApplication();
-        assertThatThrownBy(app::markExecuted).isInstanceOf(BusinessException.class);
-    }
-
-    @Test
-    @DisplayName("APPLIED/APPROVED에서는 취소 가능, EXECUTED에서는 불가")
+    @DisplayName("APPLIED/APPROVED에서는 취소 가능, 심사 탈락(REJECTED)에서는 불가")
     void cancel_rules() {
         LoanApplication applied = newApplication();
         applied.cancel();
@@ -77,9 +62,8 @@ class LoanApplicationTest {
         approved.cancel();
         assertThat(approved.getStatus()).isEqualTo(ApplicationStatus.CANCELED);
 
-        LoanApplication executed = newApplication();
-        executed.approve();
-        executed.markExecuted();
-        assertThatThrownBy(executed::cancel).isInstanceOf(BusinessException.class);
+        LoanApplication rejected = newApplication();
+        rejected.reject("CREDIT_LIMIT_EXCEEDED");
+        assertThatThrownBy(rejected::cancel).isInstanceOf(BusinessException.class);
     }
 }

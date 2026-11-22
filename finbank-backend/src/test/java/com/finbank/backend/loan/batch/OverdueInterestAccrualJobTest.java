@@ -12,7 +12,6 @@ import com.finbank.backend.loan.domain.RepaymentSchedule;
 import com.finbank.backend.loan.domain.calculator.OverdueInterestCalculator;
 import com.finbank.backend.loan.dto.RepaymentResponse;
 import com.finbank.backend.loan.repository.LoanAccountRepository;
-import com.finbank.backend.loan.repository.LoanApplicationRepository;
 import com.finbank.backend.loan.repository.LoanProductRepository;
 import com.finbank.backend.loan.repository.LoanTransactionRepository;
 import com.finbank.backend.loan.repository.OverdueHistoryRepository;
@@ -21,6 +20,7 @@ import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.loan.service.LoanRepaymentService;
 import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.support.DatabaseCleaner;
+import com.finbank.backend.support.LoanApplicationFixture;
 import com.finbank.backend.support.TestAccountNumbers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -58,7 +58,7 @@ class OverdueInterestAccrualJobTest {
     @Autowired MemberRepository memberRepository;
     @Autowired AccountRepository accountRepository;
     @Autowired LoanProductRepository loanProductRepository;
-    @Autowired LoanApplicationRepository loanApplicationRepository;
+    @Autowired LoanApplicationFixture applicationFixture;
     @Autowired LoanAccountRepository loanAccountRepository;
     @Autowired RepaymentScheduleRepository repaymentScheduleRepository;
     @Autowired OverdueHistoryRepository overdueHistoryRepository;
@@ -84,10 +84,7 @@ class OverdueInterestAccrualJobTest {
                 new Account(member, TestAccountNumbers.next(), new BigDecimal("2000000")));
         LoanProduct product = loanProductRepository.findByStatus(ProductStatus.ON_SALE).get(0);
 
-        LoanApplication application = new LoanApplication(member, product, account, new BigDecimal("12000000"), 12);
-        application.approve();
-        application.markExecuted();
-        loanApplicationRepository.saveAndFlush(application);
+        LoanApplication application = applicationFixture.executed(member, product, account, new BigDecimal("12000000"), 12);
 
         loan = loanAccountRepository.saveAndFlush(
                 LoanAccount.execute(application, account, OVERDUE_START.minusMonths(6)));

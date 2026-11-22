@@ -17,8 +17,13 @@ import java.time.LocalDateTime;
 /**
  * 대출 신청 엔티티.
  *
- * <p>상태 전이는 반드시 도메인 메서드(approve/reject/cancel/markExecuted)로만 이뤄진다.
- * 잘못된 전이는 {@link ErrorCode#INVALID_STATE}(409)로 거부 — "불변식은 도메인이 지킨다".</p>
+ * <p>심사·취소 전이는 도메인 메서드(approve/reject/cancel)로만 이뤄지고, 잘못된 전이는
+ * {@link ErrorCode#INVALID_STATE}(409)로 거부한다 — "불변식은 도메인이 지킨다".</p>
+ *
+ * <p>실행 전이(APPROVED → EXECUTED)만은 도메인 메서드가 없다. 두 요청이 같은 신청을 동시에 실행하는
+ * 경쟁이 있어서, 읽고 검사하고 쓰는 메서드로는 둘 다 통과할 수 있기 때문이다. 조건과 변경을 한 문장으로 하는
+ * 조건부 UPDATE({@code LoanApplicationRepository.markExecutedIfApproved})로만 바꾼다 —
+ * 상환 회차의 PAID 전이와 같은 원칙이다.</p>
  */
 @Entity
 @Table(name = "loan_applications")
@@ -102,11 +107,6 @@ public class LoanApplication {
                     "현재 상태(" + this.status + ")에서는 취소할 수 없습니다.");
         }
         this.status = ApplicationStatus.CANCELED;
-    }
-
-    /** 실행 완료 표시: APPROVED → EXECUTED (승인된 신청만 실행 가능) */
-    public void markExecuted() {
-        transition(ApplicationStatus.APPROVED, ApplicationStatus.EXECUTED);
     }
 
     private void transition(ApplicationStatus from, ApplicationStatus to) {

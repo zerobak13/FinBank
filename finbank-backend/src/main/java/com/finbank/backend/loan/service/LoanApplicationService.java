@@ -17,8 +17,7 @@ import com.finbank.backend.loan.repository.LoanApplicationRepository;
 import com.finbank.backend.loan.repository.LoanProductRepository;
 import com.finbank.backend.loan.service.review.LoanReviewer;
 import com.finbank.backend.loan.service.review.ReviewContext;
-import com.finbank.backend.member.repository.MemberRepository;
-import org.springframework.security.core.context.SecurityContextHolder;
+import com.finbank.backend.member.service.CurrentMemberProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,18 +39,18 @@ import java.util.Optional;
 @Service
 public class LoanApplicationService {
 
-    private final MemberRepository memberRepository;
+    private final CurrentMemberProvider currentMemberProvider;
     private final AccountRepository accountRepository;
     private final LoanProductRepository loanProductRepository;
     private final LoanApplicationRepository loanApplicationRepository;
     private final List<LoanReviewer> reviewers; // @Order 순서대로 주입됨
 
-    public LoanApplicationService(MemberRepository memberRepository,
+    public LoanApplicationService(CurrentMemberProvider currentMemberProvider,
                                   AccountRepository accountRepository,
                                   LoanProductRepository loanProductRepository,
                                   LoanApplicationRepository loanApplicationRepository,
                                   List<LoanReviewer> reviewers) {
-        this.memberRepository = memberRepository;
+        this.currentMemberProvider = currentMemberProvider;
         this.accountRepository = accountRepository;
         this.loanProductRepository = loanProductRepository;
         this.loanApplicationRepository = loanApplicationRepository;
@@ -72,7 +71,7 @@ public class LoanApplicationService {
      */
     @Transactional
     public LoanApplicationResponse apply(LoanApplyRequest request) {
-        Member member = getCurrentMember();
+        Member member = currentMemberProvider.current();
 
         LoanProduct product = loanProductRepository.findById(request.productId())
                 .filter(LoanProduct::isOnSale)
@@ -113,7 +112,7 @@ public class LoanApplicationService {
     /** 내 신청 이력 (최신순) */
     @Transactional(readOnly = true)
     public List<LoanApplicationResponse> getMyApplications() {
-        Member member = getCurrentMember();
+        Member member = currentMemberProvider.current();
         return loanApplicationRepository.findByMemberOrderByAppliedAtDesc(member).stream()
                 .map(LoanApplicationResponse::from)
                 .toList();
@@ -153,19 +152,12 @@ public class LoanApplicationService {
     }
 
     private LoanApplication getOwnApplication(Long id) {
-        Member member = getCurrentMember();
+        Member member = currentMemberProvider.current();
         LoanApplication application = loanApplicationRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("대출 신청을 찾을 수 없습니다: " + id));
         if (!application.getMember().getId().equals(member.getId())) {
             throw new ForbiddenException("본인의 대출 신청만 조회할 수 있습니다.");
         }
         return application;
-    }
-
-    private Member getCurrentMember() {
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        String email = principal.toString();
-        return memberRepository.findByEmail(email)
-                .orElseThrow(() -> new NotFoundException("Member not found: " + email));
     }
 }

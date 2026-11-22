@@ -10,13 +10,13 @@ import com.finbank.backend.loan.domain.ProductStatus;
 import com.finbank.backend.loan.domain.RepaymentSchedule;
 import com.finbank.backend.loan.domain.ScheduleStatus;
 import com.finbank.backend.loan.repository.LoanAccountRepository;
-import com.finbank.backend.loan.repository.LoanApplicationRepository;
 import com.finbank.backend.loan.repository.LoanProductRepository;
 import com.finbank.backend.loan.repository.OverdueHistoryRepository;
 import com.finbank.backend.loan.repository.RepaymentScheduleRepository;
 import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.support.DatabaseCleaner;
+import com.finbank.backend.support.LoanApplicationFixture;
 import com.finbank.backend.support.TestAccountNumbers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -54,7 +54,7 @@ class OverdueDetectionJobTest {
     @Autowired MemberRepository memberRepository;
     @Autowired AccountRepository accountRepository;
     @Autowired LoanProductRepository loanProductRepository;
-    @Autowired LoanApplicationRepository loanApplicationRepository;
+    @Autowired LoanApplicationFixture applicationFixture;
     @Autowired LoanAccountRepository loanAccountRepository;
     @Autowired RepaymentScheduleRepository repaymentScheduleRepository;
     @Autowired OverdueHistoryRepository overdueHistoryRepository;
@@ -78,11 +78,8 @@ class OverdueDetectionJobTest {
 
     /** 회차 납기일을 직접 지정해 대출 1건을 만든다 */
     private LoanAccount givenLoanWithSchedules(LocalDate... dueDates) {
-        LoanApplication application = new LoanApplication(
+        LoanApplication application = applicationFixture.executed(
                 member, product, account, new BigDecimal("12000000"), dueDates.length);
-        application.approve();
-        application.markExecuted();
-        loanApplicationRepository.saveAndFlush(application);
 
         LoanAccount loan = loanAccountRepository.saveAndFlush(
                 LoanAccount.execute(application, account, BASE_DATE.minusMonths(6)));

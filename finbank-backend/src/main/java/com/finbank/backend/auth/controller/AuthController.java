@@ -72,7 +72,7 @@ public class AuthController {
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "새 Access Token + 새 Refresh Token 반환"),
-            @ApiResponse(responseCode = "400", description = "유효하지 않거나 만료된 Refresh Token",
+            @ApiResponse(responseCode = "401", description = "유효하지 않거나 만료된 Refresh Token",
             content = @io.swagger.v3.oas.annotations.media.Content)
     })
     @PostMapping("/refresh")

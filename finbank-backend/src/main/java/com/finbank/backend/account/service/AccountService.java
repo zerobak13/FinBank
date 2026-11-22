@@ -11,10 +11,9 @@ import com.finbank.backend.exception.ErrorCode;
 import com.finbank.backend.exception.ForbiddenException;
 import com.finbank.backend.exception.NotFoundException;
 import com.finbank.backend.account.repository.AccountRepository;
-import com.finbank.backend.member.repository.MemberRepository;
+import com.finbank.backend.member.service.CurrentMemberProvider;
 import com.finbank.backend.account.repository.TransactionLogRepository;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import com.finbank.backend.common.PageResponse;
@@ -41,31 +40,24 @@ import java.util.stream.Collectors;
 @Service
 public class AccountService {
 
-    private final MemberRepository memberRepository;
+    private final CurrentMemberProvider currentMemberProvider;
     private final AccountRepository accountRepository;
     private final TransactionLogRepository transactionLogRepository;
     private final IdempotentExecutor idempotentExecutor;
 
-    public AccountService(MemberRepository memberRepository,
+    public AccountService(CurrentMemberProvider currentMemberProvider,
                           AccountRepository accountRepository,
                           TransactionLogRepository transactionLogRepository,
                           IdempotentExecutor idempotentExecutor) {
-        this.memberRepository = memberRepository;
+        this.currentMemberProvider = currentMemberProvider;
         this.accountRepository = accountRepository;
         this.transactionLogRepository = transactionLogRepository;
         this.idempotentExecutor = idempotentExecutor;
     }
 
-    private Member getCurrentMember() {
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        String email = principal.toString();
-        return memberRepository.findByEmail(email)
-                .orElseThrow(() -> new NotFoundException("Member not found: " + email));
-    }
-
     @Transactional
     public AccountSummaryResponse createAccount(AccountCreateRequest request) {
-        Member member = getCurrentMember();
+        Member member = currentMemberProvider.current();
 
         String accountNumber = generateAccountNumber();
         Account account = new Account(member, accountNumber, BigDecimal.ZERO);
@@ -84,7 +76,7 @@ public class AccountService {
     }
     @Transactional(readOnly = true)
     public List<AccountSummaryResponse> getMyAccounts() {
-        Member member = getCurrentMember();
+        Member member = currentMemberProvider.current();
         List<Account> accounts = accountRepository.findByMember(member);
         return accounts.stream()
                 .map(this::toSummary)
@@ -93,7 +85,7 @@ public class AccountService {
 
     @Transactional(readOnly = true)
     public AccountSummaryResponse getAccountSummary(Long accountId) {
-        Member member = getCurrentMember();
+        Member member = currentMemberProvider.current();
 
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
@@ -107,7 +99,7 @@ public class AccountService {
 
     @Transactional(readOnly = true)
     public PageResponse<TransactionLogResponse> getAccountTransactions(Long accountId, int page, int size) {
-        Member member = getCurrentMember();
+        Member member = currentMemberProvider.current();
 
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
@@ -141,7 +133,7 @@ public class AccountService {
             throw new BusinessException(ErrorCode.INVALID_AMOUNT, "입금 금액은 0보다 커야 합니다.");
         }
 
-        Member member = getCurrentMember();
+        Member member = currentMemberProvider.current();
 
         // 권한 확인 → 락 순서. 남의 계좌에 락이 걸리는 일 자체를 막는다.
         // (락 조회가 계좌 엔티티의 첫 조회이므로 항상 커밋된 최신 잔액을 읽는다.)
@@ -169,7 +161,7 @@ public class AccountService {
             throw new BusinessException(ErrorCode.INVALID_AMOUNT, "출금 금액은 0보다 커야 합니다.");
         }
 
-        Member member = getCurrentMember();
+        Member member = currentMemberProvider.current();
 
         // 권한 확인 → 락 순서 (입금과 동일)
         assertOwner(accountId, member, "본인 계좌만 출금할 수 있습니다.");
@@ -229,7 +221,7 @@ public class AccountService {
      */
     @Transactional
     public TransferResponse transfer(TransferRequest request, String idempotencyKey) {
-        Member member = getCurrentMember();
+        Member member = currentMemberProvider.current();
 
         if (request.getAmount() == null || request.getAmount().signum() <= 0) {
             throw new BusinessException(ErrorCode.INVALID_AMOUNT, "이체 금액은 0보다 커야 합니다.");
@@ -360,7 +352,7 @@ public class AccountService {
                 return candidate;
             }
         }
-        throw new BusinessException("계좌번호 생성에 실패했습니다. 잠시 후 다시 시도해주세요.");
+        throw new BusinessException(ErrorCode.ACCOUNT_NUMBER_GENERATION_FAILED);
     }
 
     private String randomAccountNumber() {

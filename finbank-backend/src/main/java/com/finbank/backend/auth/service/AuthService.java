@@ -8,6 +8,7 @@ import com.finbank.backend.auth.dto.LoginRequest;
 import com.finbank.backend.auth.dto.RegisterRequest;
 import com.finbank.backend.auth.dto.TokenRefreshRequest;
 import com.finbank.backend.exception.BusinessException;
+import com.finbank.backend.exception.ErrorCode;
 import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.auth.repository.RefreshTokenRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,7 +49,7 @@ public class AuthService {
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         if (memberRepository.existsByEmail(request.getEmail())) {
-            throw new BusinessException("이미 가입된 이메일입니다.");
+            throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
         }
 
         String hash = passwordEncoder.encode(request.getPassword());
@@ -61,10 +62,10 @@ public class AuthService {
     @Transactional
     public AuthResponse login(LoginRequest request) {
         Member member = memberRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new BusinessException("이메일 또는 비밀번호가 올바르지 않습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.LOGIN_FAILED));
 
         if (!passwordEncoder.matches(request.getPassword(), member.getPassword())) {
-            throw new BusinessException("이메일 또는 비밀번호가 올바르지 않습니다.");
+            throw new BusinessException(ErrorCode.LOGIN_FAILED);
         }
 
         return issueTokens(member);
@@ -79,11 +80,11 @@ public class AuthService {
     @Transactional
     public AuthResponse refresh(TokenRefreshRequest request) {
         RefreshToken saved = refreshTokenRepository.findByToken(request.getRefreshToken())
-                .orElseThrow(() -> new BusinessException("유효하지 않은 Refresh Token입니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
 
         if (saved.isExpired()) {
             refreshTokenRepository.delete(saved);
-            throw new BusinessException("Refresh Token이 만료되었습니다. 다시 로그인해주세요.");
+            throw new BusinessException(ErrorCode.REFRESH_TOKEN_EXPIRED);
         }
 
         Member member = saved.getMember();
