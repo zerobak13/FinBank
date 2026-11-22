@@ -12,6 +12,7 @@ import com.finbank.backend.exception.NotFoundException;
 import com.finbank.backend.loan.domain.LoanAccount;
 import com.finbank.backend.loan.domain.LoanAccountStatus;
 import com.finbank.backend.loan.domain.LoanTransaction;
+import com.finbank.backend.loan.domain.OverdueHistory;
 import com.finbank.backend.loan.domain.RepaymentSchedule;
 import com.finbank.backend.loan.domain.ScheduleStatus;
 import com.finbank.backend.loan.domain.calculator.AccruedInterestCalculator;
@@ -30,6 +31,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 
 /**
  * 상환의 트랜잭션 본체 — 회차 상환과 전액 중도상환.
@@ -106,14 +109,23 @@ public class LoanRepaymentProcessor {
 
         BigDecimal principal = target.getPrincipalAmount();
         BigDecimal interest = target.getInterestAmount();
-        BigDecimal total = principal.add(interest);
 
-        withdrawFromAccount(account, total);
+        // 연체 회차면 가산 배치가 쌓아 둔 연체이자까지 한 번에 받는다 (연체가 아니면 이력이 없어 0원)
+        Optional<OverdueHistory> overdue = overdueHistoryRepository.findByScheduleIdAndResolvedAtIsNull(target.getId());
+        BigDecimal penalty = overdue.map(OverdueHistory::getPenaltyAccrued)
+                .map(MoneyPolicy::toWon)
+                .orElse(BigDecimal.ZERO);
+        BigDecimal total = principal.add(interest).add(penalty);
+
+        withdrawFromAccount(account, total, penalty);   // 모자라면 여기서 전부 거절 — 원리금만 받는 일은 없다
         loan.repayPrincipal(principal);
-        resolveOverdueHistory(target);
+        // 이력을 닫아야 가산 배치가 멈춘다 — 안 닫으면 다 갚은 회차에 이자가 계속 붙는다 (배치를 만들며 드러난 빈틈)
+        overdue.ifPresent(history -> history.resolve(LocalDate.now()));
         resolveOverdueIfCleared(loan);
 
-        loanTransactionRepository.save(LoanTransaction.repayment(loan, principal, interest, idempotencyKey));
+        // 원장은 상환 한 건 = 한 줄 = 계좌 출금액. 연체이자는 이자 부분에 합산한다 (중도상환 수수료와 같은 방식)
+        loanTransactionRepository.save(
+                LoanTransaction.repayment(loan, principal, interest.add(penalty), idempotencyKey));
 
         RepaymentResponse response = new RepaymentResponse(
                 loan.getId(),
@@ -121,6 +133,7 @@ public class LoanRepaymentProcessor {
                 target.getInstallmentNo(),
                 MoneyPolicy.toWon(principal),
                 MoneyPolicy.toWon(interest),
+                penalty,
                 BigDecimal.ZERO,
                 MoneyPolicy.toWon(total),
                 MoneyPolicy.toWon(loan.getBalance()),
@@ -157,7 +170,7 @@ public class LoanRepaymentProcessor {
 
         BigDecimal total = remainingPrincipal.add(accruedInterest).add(fee);
 
-        withdrawFromAccount(account, total);
+        withdrawFromAccount(account, total, BigDecimal.ZERO);
         loan.repayPrincipal(remainingPrincipal); // 잔액 0 → PAID_OFF
 
         // 남은 회차는 삭제하지 않고 CANCELED로 남긴다 (계약이 어떤 계획이었는지는 사실이다)
@@ -172,6 +185,7 @@ public class LoanRepaymentProcessor {
                 null,
                 MoneyPolicy.toWon(remainingPrincipal),
                 MoneyPolicy.toWon(accruedInterest),
+                BigDecimal.ZERO,
                 MoneyPolicy.toWon(fee),
                 MoneyPolicy.toWon(total),
                 MoneyPolicy.toWon(loan.getBalance()),
@@ -202,28 +216,31 @@ public class LoanRepaymentProcessor {
         return loan;
     }
 
-    private void withdrawFromAccount(Account account, BigDecimal amount) {
+    /**
+     * 연결계좌에서 상환 금액을 출금한다.
+     *
+     * <p>잔액이 모자라면 일부만 빼 가지 않고 <b>전부 거절</b>한다 — 앞서 실행한 회차 PAID 전이도 같은 트랜잭션이라 함께 롤백된다.
+     * 거절 메시지에는 얼마가 있어야 하는지(연체이자가 들어 있으면 그 금액까지) 적어, 입금하고 다시 시도할 수 있게 한다.</p>
+     *
+     * @param penaltyIncluded {@code amount} 안의 연체이자 (안내 문구용, 없으면 0)
+     */
+    private void withdrawFromAccount(Account account, BigDecimal amount, BigDecimal penaltyIncluded) {
         if (account.isLocked()) {
             throw new BusinessException(ErrorCode.ACCOUNT_LOCKED, "잠금된 계좌에서는 상환할 수 없습니다.");
         }
         if (account.getBalance().compareTo(amount) < 0) {
+            String penaltyNote = penaltyIncluded.signum() > 0 ? "(연체이자 " + won(penaltyIncluded) + " 포함)" : "";
             throw new BusinessException(ErrorCode.INSUFFICIENT_BALANCE,
-                    "상환 금액에 비해 계좌 잔액이 부족합니다.");
+                    "계좌 잔액이 부족합니다. 상환에 필요한 금액은 " + won(amount) + penaltyNote
+                            + "이고, 현재 잔액은 " + won(account.getBalance()) + "입니다.");
         }
         account.withdraw(amount);
         transactionLogRepository.save(TransactionLog.withdraw(account, amount, account.getBalance()));
     }
 
-    /**
-     * 연체된 회차를 납부하면 그 회차의 연체이력을 닫는다.
-     *
-     * <p>이 처리가 없으면 이력이 미해소로 남아 <b>가산 배치가 이자를 계속 붙인다</b>.
-     * 다 갚았는데 이자가 늘어나는 상태 — 배치(D)를 만들면서 드러난 상환(C3)의 빈틈이다.
-     * 이력이 없으면(연체 아닌 회차) 아무 일도 하지 않는다.</p>
-     */
-    private void resolveOverdueHistory(RepaymentSchedule schedule) {
-        overdueHistoryRepository.findByScheduleIdAndResolvedAtIsNull(schedule.getId())
-                .ifPresent(history -> history.resolve(LocalDate.now()));
+    /** 안내 문구용 금액 표기 — 1051150 → "1,051,150원" */
+    private static String won(BigDecimal amount) {
+        return String.format(Locale.KOREA, "%,d원", MoneyPolicy.toWon(amount).toBigInteger());
     }
 
     /** 연체 회차가 모두 정리되면 대출을 정상으로 되돌린다 */

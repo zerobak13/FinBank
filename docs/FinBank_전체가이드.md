@@ -1,7 +1,7 @@
 ---
 title: "FinBank 완전 가이드"
 subtitle: "수신·여신·배치부터 불변식 하네스·AI 에이전트 하네스까지 — 설계·코드·DB·테스트 전부 한 권으로"
-date: "2026-11-15 개정판 (초판 2026-07-28)"
+date: "2026-11-22 개정판 (초판 2026-07-28)"
 toc-title: "목차"
 ---
 
@@ -24,7 +24,7 @@ toc-title: "목차"
 9. **검색과 인덱스** — 느린 걸 빠르게
 10. **배치** — 밤에 혼자 도는 프로그램 (구조·코드·운영까지)
 11. **예외 처리** — 오류를 어떻게 알려주나
-12. **테스트** — 537개가 무엇을 지키고 있나
+12. **테스트** — 539개가 무엇을 지키고 있나
 13. **불변식 하네스** — 정답을 몰라도 틀린 걸 잡는 법
 14. **AI 에이전트 하네스** — 만드는 AI와 검증하는 AI를 나누다
 15. **자동화와 실행 환경** — CI, Docker, 판정 기준 가드
@@ -37,7 +37,7 @@ toc-title: "목차"
 
 > **코드를 직접 열어 보며 이해하고 싶다면 19장부터 시작하세요.** 19장은 이 문서의 나머지 장을 "읽는 순서"로 엮어 둔 길잡이입니다.
 
-## 0-1. 이번 개정에서 바뀐 것 (2026-11-05 · 11-11 · 11-15)
+## 0-1. 이번 개정에서 바뀐 것 (2026-11-05 · 11-11 · 11-15 · 11-22)
 
 초판(2026-07-28) 이후에 한 일을 더하고, 초판에서 실제 코드와 어긋나 있던 곳을 바로잡았습니다.
 
@@ -48,6 +48,7 @@ toc-title: "목차"
 | 5-3, 8-9 | 이체 멱등키 · 락을 걸기 전에 권한 확인 · 잠금 계좌 입출금 차단 (PR #19) |
 | 7-2, 7-4 | 원리금균등이 깨지는 조합(만기 전 잔액 음수)을 찾아 거부하도록 수정, 검증 4층 (PR #20) |
 | 10장 | 배치를 다시 씀 — Job·Step·Reader·Processor·Writer 구조와 실제 코드, 상환과 맞물리는 지점, 놓쳤을 때·실패했을 때, 테스트 12개 |
+| 10-8 | 연체 회차를 갚을 때 쌓인 연체이자까지 한 번에 받기 — 모자라면 전부 거절하고 필요한 금액 안내 (11-22) |
 | 11-4 | 알고 있는 빈틈 — 엔진의 거부 예외가 API까지 오면 500 |
 | 13장 | 불변식 하네스 — 불변식 카탈로그 25개, 판정기, 케이스 파일, 무작위 탐색, 입력 계약 |
 | 14장 | AI 에이전트 하네스 — 구현·검증 역할 분리, hook·diff 가드·CI 가드, 두 터미널 실전 기록 |
@@ -68,7 +69,7 @@ toc-title: "목차"
 | 3-5, 18장 | 마이그레이션 V1~V6 | V1~V7 (V7: 대출 신청 시 입금 계좌 지정, 2026-08) |
 | 4-1, 12-2, 18장 | 자동심사 룰 3개 | 2개 — `HasActiveAccountRule`은 V7 때 도달 불가능해져 삭제 (7-5) |
 | 5-4 | 락 없는 쪽 결과를 고정값처럼 적음 | 실행할 때마다 달라지는 값임을 명시 |
-| 12장, 15장, 18장 | 테스트 333개 | 537개 (2026-11-11 기준, 성능 측정 2개는 별도) |
+| 12장, 15장, 18장 | 테스트 333개 | 539개 (2026-11-22 기준, 성능 측정 2개는 별도) |
 | 12-2 | `LoanApplicationServiceTest` 8개 · `TransferRuleTest` 6개 · `ScheduleGeneratorTest` 12개 | 11개 · 10개 · 14개 |
 | 부록 A-3 | 연체 후보 조회 쿼리를 단순화해 적음 | 실제 쿼리 (`join fetch` 포함) |
 | 부록 A-6 | 멱등키 필수 API 3개 | 4개 (이체 추가) |
@@ -1284,19 +1285,38 @@ history -> {
 
 > **12살 버전**: 숙제를 다 하면 공책에 도장을 찍어요. 다음에 "도장 없는 것만" 찾으면, 실수로 두 번 확인해도 이미 한 건 다시 안 합니다.
 
-## 10-8. 상환과 맞물리는 지점 — 연체 해소
+## 10-8. 상환과 맞물리는 지점 — 연체이자 수납과 연체 해소
 
-배치가 연체를 **여는** 쪽이라면, 상환은 연체를 **닫는** 쪽입니다.
+배치가 연체를 **열고 이자를 쌓는** 쪽이라면, 상환은 쌓인 이자를 **걷고 연체를 닫는** 쪽입니다.
 
 ```java
-// LoanRepaymentProcessor — 회차를 갚을 때 (같은 트랜잭션 안)
-withdrawFromAccount(account, total);
+// LoanRepaymentProcessor.repay() — 회차를 갚을 때 (같은 트랜잭션 안)
+Optional<OverdueHistory> overdue =
+        overdueHistoryRepository.findByScheduleIdAndResolvedAtIsNull(target.getId());
+BigDecimal penalty = overdue.map(OverdueHistory::getPenaltyAccrued)   // 가산 배치가 쌓아 둔 연체이자
+        .map(MoneyPolicy::toWon)
+        .orElse(BigDecimal.ZERO);                                      // 연체가 아니면 이력이 없어 0원
+BigDecimal total = principal.add(interest).add(penalty);
+
+withdrawFromAccount(account, total, penalty);   // 모자라면 전부 거절 + 필요한 금액 안내
 loan.repayPrincipal(principal);
-resolveOverdueHistory(target);    // 이 회차의 진행 중 연체 이력 → resolvedAt = 오늘 → 가산 대상에서 빠짐
+overdue.ifPresent(history -> history.resolve(LocalDate.now()));   // 이력 닫기 → 가산 중단
 resolveOverdueIfCleared(loan);    // 연체 회차가 하나도 안 남으면 대출 OVERDUE → ACTIVE
 ```
 
-이 두 줄은 처음부터 있던 게 아닙니다. 배치를 만들고 나서야 **"연체 회차를 갚아도 이자가 계속 붙는"** 빈틈이 드러났습니다(실패 기록 ⑥). 지금은 "연체 회차를 상환하면 이력이 해소되고 가산이 멈춘다" 테스트가 이 연결을 지킵니다.
+| 규칙 | 왜 |
+|---|---|
+| 원리금 + 연체이자를 **한 번에** 받는다 | 배치가 쌓기만 하고 아무도 걷지 않으면 연체이자는 장부에만 있는 숫자다 |
+| 잔액이 모자라면 **전부 거절** | 일부만 받으려면 무엇부터 채울지(충당 순서)를 먼저 정해야 한다. 대신 "상환에 필요한 금액은 1,051,150원(연체이자 1,150원 포함)이고, 현재 잔액은 1,050,000원입니다"처럼 필요한 금액을 알려 준다 |
+| 원장은 상환 한 건 = 한 줄 | 연체이자는 `REPAYMENT` 거래의 이자 부분에 합산한다(중도상환 수수료와 같은 방식). 거래 금액 = 계좌 출금액. 응답에서는 `penaltyPortion`으로 따로 보여 준다 |
+
+이력을 닫는 줄은 처음부터 있던 게 아닙니다. 배치를 만들고 나서야 **"연체 회차를 갚아도 이자가 계속 붙는"** 빈틈이 드러났습니다(실패 기록 ⑥). 연체이자를 함께 걷는 부분은 2026-11-22에 더했습니다 — 그 전에는 이력을 닫기만 해서, 쌓인 연체이자가 걷히지 않은 채 장부에만 남았습니다. 지금은 "연체 회차를 상환하면 쌓인 연체이자가 걷히고, 이력이 해소돼 가산이 멈춘다" 테스트가 배치와 상환의 연결을, `LoanRepaymentServiceTest`의 연체 회차 테스트 2개가 출금액·원장·전부 거절을 지킵니다.
+
+**아직 안 하는 것**
+
+- 상환일까지의 일할 정산 — 배치가 그날 아직 안 돌았으면(자정 ~ 새벽 2시) 하루치가 빠진다. 차주에게 유리한 쪽의 오차
+- 가산 배치와 상환이 같은 순간에 겹치는 경우 — 배치는 잠금 없이 읽은 이력을 행 전체로 다시 쓴다. 그 사이에 상환이 이력을 닫으면 배치가 닫힌 이력을 다시 열 수 있다(원래부터 있던 경쟁, 새벽 2시 배치가 도는 동안만). 고치려면 가산을 조건부 UPDATE(`WHERE resolved_at IS NULL`)로 바꾸고 상환 쪽 락 순서와 함께 맞춰야 한다
+- 부분 충당·감면·연체 중 전액 중도상환
 
 ## 10-9. 청크 사이즈 — 재보고 정했다
 
@@ -1362,7 +1382,7 @@ resolveOverdueIfCleared(loan);    // 연체 회차가 하나도 안 남으면 �
 | 이어서 실행: 10일 + 5일 = 15일치 | 구간 연속성 |
 | 배치가 밀려도 다음 실행에서 밀린 일수만큼 한 번에 가산된다 | 따라잡기 |
 | 해소된 연체는 더 이상 가산되지 않는다 | 해소 |
-| 연체 회차를 상환하면 이력이 해소되고 가산이 멈춘다 | 상환 ↔ 배치 연결 |
+| 연체 회차를 상환하면 쌓인 연체이자가 걷히고, 이력이 해소돼 가산이 멈춘다 | 상환 ↔ 배치 연결 |
 | 연체 당일 실행 → 경과일수 0이므로 가산도 원장도 없다 | 0일 경계 |
 
 여기에 성능 측정 `BatchChunkSizePerformanceTest`(`perf` 태그)가 5만 건에서 청크 100/500/1000을 비교하면서, **어떤 청크 크기에서도 5만 건이 전부 처리되는지**도 함께 확인합니다. 테스트에서는 잡 파라미터에 UUID를 더해 "같은 파라미터 재실행 거부"를 피합니다(실패 기록 ⑤).
@@ -1432,13 +1452,13 @@ public enum ErrorCode {
 
 \newpage
 
-# 12. 테스트 — 537개가 무엇을 지키나
+# 12. 테스트 — 539개가 무엇을 지키나
 
 ## 12-1. 철학: 개수보다 "위험한 곳"
 
 모든 코드를 다 테스트하지 않았습니다. **틀렸을 때 돈이 사라지는 곳**에 집중했습니다. 그리고 2026년 10월부터는 "사람이 고른 입력"의 한계를 넘기 위해 **불변식 하네스**(13장)를 더했습니다.
 
-**537개는 `./gradlew test`가 실제로 실행하는 수**입니다(2026-11-11 기준) — `@Test` 메서드 112개 + 파라미터 테스트 실행 425회(240조합 + 계산기 143조합 + 케이스 파일 42건). 성능 측정 2개(`perf` 태그)는 평소 제외합니다.
+**539개는 `./gradlew test`가 실제로 실행하는 수**입니다(2026-11-22 기준) — `@Test` 메서드 114개 + 파라미터 테스트 실행 425회(240조합 + 계산기 143조합 + 케이스 파일 42건). 성능 측정 2개(`perf` 태그)는 평소 제외합니다.
 
 | 묶음 | 개수 |
 |---|---:|
@@ -1446,9 +1466,9 @@ public enum ErrorCode {
 | 예외 | 3 |
 | 여신 계산 엔진 | 273 |
 | 불변식 하네스 | 190 |
-| 여신 통합 (실제 DB) | 37 |
+| 여신 통합 (실제 DB) | 39 |
 | 배치 | 12 |
-| **합계** | **537** |
+| **합계** | **539** |
 
 이 중 계산 엔진 패키지(`domain/calculator`)와 불변식 하네스를 합친 **457개**가 DB 없이 수십 초면 도는 **빠른 테스트**(`fast-test.sh`)입니다. AI 에이전트가 실행할 수 있는 유일한 명령이기도 합니다(14장).
 
@@ -1499,7 +1519,7 @@ public enum ErrorCode {
 |---|---:|---|
 | `LoanApplicationServiceTest` | 11 | 자동심사 2룰(한도·연체) + 상품 한도·기간 검증(422) + **입금 계좌 지정 검증**(없음 404·남의 계좌 403·잠금 400) + 취소 |
 | `LoanExecutionServiceTest` | 7 | 실행 정합성, **멱등 재생**, 이중 실행 409, 키 재사용 422, 실패 시 키 해제 |
-| `LoanRepaymentServiceTest` | 9 | 회차 상환, 순서 규칙, 멱등, 완납, 전액 중도상환 |
+| `LoanRepaymentServiceTest` | 11 | 회차 상환, 순서 규칙, 멱등, 완납, 전액 중도상환, **연체 회차 — 연체이자까지 한 번에 출금, 모자라면 전부 거절** |
 | `LoanRepaymentConcurrencyTest` | 2 | **100스레드 동시 상환 → 1건만**, 같은 키 100회 → 돈은 1번만 |
 | `LoanSearchTest` | 8 | 조건 조합, 경계 포함, 타인 대출 미노출, 페이징 |
 
@@ -2080,7 +2100,7 @@ Mac에 Claude Code CLI를 설치하고, 먼저 가짜 입력 JSON으로 hook을 
 
 ```
 push(main/develop) 또는 PR
-  → 백엔드: MySQL 컨테이너 띄우고 537개 테스트
+  → 백엔드: MySQL 컨테이너 띄우고 539개 테스트
   → 프론트엔드: 빌드
   → 하나라도 빨간불이면 머지 못 함
 ```
@@ -2184,6 +2204,7 @@ application.yml              ← 가장 약함
 - **문제**: 연체 회차를 상환해도 **연체이자가 계속 붙는 구조**였다
 - **원인**: 상환 로직이 회차와 대출 상태만 되돌리고 **`OverdueHistory`를 닫지 않았다.** C3 시점에는 연체이력을 만드는 주체(배치)가 없어서 **증상이 없었다** — 코드는 틀렸지만 드러나지 않았던 것
 - **해결**: 상환 시 이력을 `resolve`하고, "상환 → 가산 중단"을 통합 테스트로 고정
+- **후속 (11-22)**: 이력을 닫기만 하고 쌓인 연체이자는 걷지 않고 있었다 — 상환할 때 원리금과 함께 받도록 보완 (10-8)
 - **교훈**: **기능 A와 B가 같은 데이터를 반대 방향으로 다룰 때, B가 없는 동안 A의 버그는 잠복한다**
 
 ## ⑦ PAT 권한 부족으로 push 거부
@@ -2352,7 +2373,7 @@ UPDATE는 항상 최신 커밋본을 기준으로 조건을 평가하므로, **�
 | 판정 기준 보호 | hook + diff 가드 + CI 라벨 가드 | 수정 시도 **2회 차단·기록**, 가드 테스트 30개 |
 | 인덱스 효과 | 10만 건 EXPLAIN 전/후 | **36배 / 26배** |
 | 배치 처리량 | 5만 건 청크 3종 비교 | **3.8배** (수확 체감 확인) |
-| 자동 검증 | CI에서 매 커밋 | **테스트 537개** |
+| 자동 검증 | CI에서 매 커밋 | **테스트 539개** |
 
 ## 전 구간 흐름
 
@@ -2379,7 +2400,7 @@ UPDATE는 항상 최신 커밋본을 기준으로 조건을 평가하므로, **�
         ↓
 [사람: diff 가드 → 커밋] → [검증 AI: 케이스 추가 + 리포트] → [사람: 판단]
         ↓
-[PR: CI 537개 + 판정 기준 가드(oracle-approved 라벨)]
+[PR: CI 539개 + 판정 기준 가드(oracle-approved 라벨)]
 ```
 
 ## 처음부터 다시 만든다면 — 순서
@@ -2403,7 +2424,7 @@ UPDATE는 항상 최신 커밋본을 기준으로 조건을 평가하므로, **�
 
 ---
 
-*FinBank — 2026.11.15 기준 (개정판). 테스트 537개, 마이그레이션 V1~V7, 불변식 25개, 전 구간 CI 검증 + 판정 기준 가드.*
+*FinBank — 2026.11.22 기준 (개정판). 테스트 539개, 마이그레이션 V1~V7, 불변식 25개, 전 구간 CI 검증 + 판정 기준 가드.*
 
 \newpage
 
@@ -2580,7 +2601,7 @@ scripts/harness/fast-test.sh          # 이 단계의 테스트는 전부 여기
 | 4 | `loan/service/review/` 4개 파일 | `LoanReviewer` 인터페이스 + 룰 2개. 룰을 하나 더 만든다면 어떤 파일만 추가하면 되나? (서비스는 안 건드린다) |
 | 5 | `loan/service/LoanExecutionService.java` → `LoanExecutionProcessor.java` | 껍데기(트랜잭션 없음, 멱등키)와 본체(`@Transactional`, 7단계). **왜 클래스를 나눴나**는 껍데기 맨 위 주석에 |
 | 6 | `loan/repository/LoanApplicationRepository.java`의 `markExecutedIfApproved` | 조건부 UPDATE. `WHERE status = APPROVED`가 핵심 |
-| 7 | `loan/service/LoanRepaymentService.java` → `LoanRepaymentProcessor.java` | `repay()`: 락 순서(계좌 → 대출) → 다음 회차 찾기 → **`markPaidIfPayable` 조건부 UPDATE** → 출금 → 원금 감소 → 연체 해소. `prepayAll()`: 경과이자 + 수수료 |
+| 7 | `loan/service/LoanRepaymentService.java` → `LoanRepaymentProcessor.java` | `repay()`: 락 순서(계좌 → 대출) → 다음 회차 찾기 → **`markPaidIfPayable` 조건부 UPDATE** → 출금(연체 회차면 연체이자까지) → 원금 감소 → 연체 해소. `prepayAll()`: 경과이자 + 수수료 |
 | 8 | `loan/repository/RepaymentScheduleRepository.java` | `markPaidIfPayable`과 `cancelPendingByLoanAccountId` — 상태 전이가 **도메인 메서드가 아니라 UPDATE문**인 이유 (8-7) |
 | 9 | `loan/repository/LoanAccountRepositoryImpl.java` | QueryDSL 동적 검색. 조건 메서드가 `null`을 돌려주면 그 조건이 빠진다 |
 | 10 | `test/…/loan/service/LoanExecutionServiceTest.java`, `LoanRepaymentServiceTest.java` | 테스트 이름만 쭉 읽어도 요구사항 목록이 된다 |
@@ -2628,7 +2649,7 @@ scripts/harness/fast-test.sh          # 이 단계의 테스트는 전부 여기
 | 3 | `loan/batch/OverdueScheduleReader.java` | **커서 방식** — `lastId`를 기억하고 `PageRequest.of(0, chunkSize)`로 늘 0페이지를 읽는다. 맨 위 주석이 "왜 페이징 Reader를 안 썼나" |
 | 4 | `loan/repository/RepaymentScheduleRepository.java`의 `findOverdueCandidates` | `s.id > :lastId`가 커서 |
 | 5 | `loan/batch/OverdueInterestAccrualJobConfig.java` | Processor에서 `from`(기산점) 계산과 `return null`의 의미 |
-| 6 | `loan/service/LoanRepaymentProcessor.java`의 `resolveOverdueHistory` | 배치가 연 연체를 상환이 닫는다 (실패 기록 ⑥) |
+| 6 | `loan/service/LoanRepaymentProcessor.java`의 `repay()` 연체 부분 | 배치가 쌓은 연체이자를 상환이 걷고, 배치가 연 연체를 상환이 닫는다 (실패 기록 ⑥, 10-8) |
 | 7 | `test/…/loan/batch/OverdueDetectionJobTest.java` | "청크 경계를 넘어도 한 건도 빠뜨리지 않는다 (250건)" — 커서의 증거 |
 
 **직접 해 보기**: 배치 테스트 12개를 돌리고 로그의 `[연체 감지] N건 전이`를 찾아보세요.

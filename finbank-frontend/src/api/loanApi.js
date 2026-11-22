@@ -40,14 +40,16 @@ export const loanApi = {
     getSchedules: (loanId) => client(`/api/loans/${loanId}/schedules`),
 };
 
-/** 서버 에러 코드 → 사용자 문구 (서버 메시지가 기술적일 때 대체할 기본값) */
+/**
+ * 서버 에러 코드 → 사용자 문구 (서버 메시지가 기술적일 때 대체할 기본값).
+ * 잔액 부족(INSUFFICIENT_BALANCE)은 두지 않는다 — 서버 문구에 상환에 필요한 금액이 담겨 있어 그대로 보여 준다.
+ */
 export const LOAN_ERROR_MESSAGE = {
     ALREADY_EXECUTED: "이미 실행된 신청입니다.",
     ALREADY_REPAID: "이미 상환된 회차입니다. 최신 상태로 갱신했습니다.",
     OUT_OF_ORDER_INSTALLMENT: "회차는 순서대로만 상환할 수 있습니다.",
     IDEMPOTENT_REQUEST_IN_PROGRESS: "같은 요청이 처리 중입니다. 잠시 후 다시 시도해주세요.",
     IDEMPOTENCY_KEY_MISMATCH: "요청 키가 중복되었습니다. 새로고침 후 다시 시도해주세요.",
-    INSUFFICIENT_BALANCE: "계좌 잔액이 부족합니다.",
     ACCOUNT_LOCKED: "잠금된 계좌로는 처리할 수 없습니다.",
     NETWORK_ERROR: "네트워크가 불안정합니다. 잠시 후 다시 시도해주세요.",
 };
