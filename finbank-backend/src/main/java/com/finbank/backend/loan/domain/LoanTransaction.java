@@ -70,7 +70,7 @@ public class LoanTransaction {
                 loan.getBalance(), idempotencyKey);
     }
 
-    /** 회차 상환: 원금/이자 분리 기록. */
+    /** 회차 상환: 원금/이자 분리 기록. 연체 회차면 연체이자를 이자 부분에 합산한다 (중도상환 수수료와 같은 방식). */
     public static LoanTransaction repayment(LoanAccount loan, BigDecimal principalPortion,
                                             BigDecimal interestPortion, String idempotencyKey) {
         return create(loan, LoanTransactionType.REPAYMENT,

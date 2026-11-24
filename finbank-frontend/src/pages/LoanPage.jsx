@@ -123,8 +123,12 @@ export default function LoanPage({ auth, accounts = [], loading, setLoading, not
         try {
             setLoading(true);
             const res = await loanApi.repay(loanId, installmentNo, key);
+            // 연체 회차면 쌓인 연체이자까지 함께 출금된다
+            const penaltyNote = Number(res.penaltyPortion ?? 0) > 0
+                ? `, 연체이자 ${won(res.penaltyPortion)}원 포함`
+                : "";
             notify(
-                `${res.installmentNo}회차 상환 완료 — ${won(res.totalPaid)}원 출금 ` +
+                `${res.installmentNo}회차 상환 완료 — ${won(res.totalPaid)}원 출금${penaltyNote} ` +
                 `(잔여 원금 ${won(res.loanBalanceAfter)}원)`,
                 "success",
             );

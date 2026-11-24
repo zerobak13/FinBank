@@ -10,6 +10,7 @@ import com.finbank.backend.loan.domain.OverdueHistory;
 import com.finbank.backend.loan.domain.ProductStatus;
 import com.finbank.backend.loan.domain.RepaymentSchedule;
 import com.finbank.backend.loan.domain.calculator.OverdueInterestCalculator;
+import com.finbank.backend.loan.dto.RepaymentResponse;
 import com.finbank.backend.loan.repository.LoanAccountRepository;
 import com.finbank.backend.loan.repository.LoanApplicationRepository;
 import com.finbank.backend.loan.repository.LoanProductRepository;
@@ -198,14 +199,15 @@ class OverdueInterestAccrualJobTest {
     }
 
     @Test
-    @DisplayName("연체 회차를 상환하면 이력이 해소되고 가산이 멈춘다 (상환 ↔ 배치 연결)")
+    @DisplayName("연체 회차를 상환하면 쌓인 연체이자가 걷히고, 이력이 해소돼 가산이 멈춘다 (상환 ↔ 배치 연결)")
     void stopsAccruingAfterOverdueInstallmentIsRepaid() throws Exception {
         runJob(OVERDUE_START.plusDays(5));
         BigDecimal beforeRepayment = reload().getPenaltyAccrued();
         assertThat(beforeRepayment).isEqualByComparingTo(expectedPenalty(5));
 
-        // 연체된 1회차를 납부 → 이력이 닫혀야 한다
-        loanRepaymentService.repay(loan.getId(), 1, UUID.randomUUID().toString());
+        // 연체된 1회차를 납부 → 배치가 쌓은 연체이자가 그대로 걷히고, 이력이 닫혀야 한다
+        RepaymentResponse res = loanRepaymentService.repay(loan.getId(), 1, UUID.randomUUID().toString());
+        assertThat(res.penaltyPortion()).isEqualByComparingTo(beforeRepayment);
         assertThat(reload().isResolved()).isTrue();
 
         // 이후 배치는 이 이력을 건드리지 않는다

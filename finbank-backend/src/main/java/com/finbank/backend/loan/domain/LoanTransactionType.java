@@ -4,7 +4,7 @@ package com.finbank.backend.loan.domain;
 public enum LoanTransactionType {
     /** 대출 실행 (연결계좌 입금) */
     EXECUTION,
-    /** 회차 상환 */
+    /** 회차 상환 (연체 회차면 연체이자 포함) */
     REPAYMENT,
     /** 전액 중도상환 */
     PREPAYMENT,
