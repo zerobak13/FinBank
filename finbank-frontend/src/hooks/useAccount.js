@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { accountApi } from "../api/accountApi";
 
-export function useAccount(auth, notify, onLogout) {
+export function useAccount(auth, notify) {
     const [accounts, setAccounts] = useState([]);
     const [selected, setSelected] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -39,9 +39,8 @@ export function useAccount(auth, notify, onLogout) {
             const targetId = data.some((a) => a.id === keepId) ? keepId : data[0].id;
             await selectAccount(targetId, false);
         } catch (e) {
-            if (String(e.message).includes("HTTP 403")) {
-                onLogout();
-            } else {
+            // 401(로그인 만료)은 client가 재발급을 시도하고, 실패하면 화면 전체를 로그아웃시킨다
+            if (e.status !== 401) {
                 notify(e.message, "error");
             }
         } finally {

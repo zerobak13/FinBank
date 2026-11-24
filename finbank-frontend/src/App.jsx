@@ -8,6 +8,7 @@ import { useAccount } from "./hooks/useAccount";
 import { authApi } from "./api/authApi";
 import { accountApi } from "./api/accountApi";
 import { newIdempotencyKey } from "./api/idempotency";
+import { SESSION_EXPIRED_EVENT, readAuth } from "./api/client";
 import LoanPage from "./pages/LoanPage";
 
 export default function App() {
@@ -17,17 +18,31 @@ export default function App() {
   const notify = (m, type = "info") => { setMsg(m); setMsgType(type); };
 
   const { auth, saveAuth } = useAuth();
-  const handleLogout = () => {
+  const clearSession = (message, type = "info") => {
     saveAuth(null);
     setAccounts([]);
     setSelected(null);
-    notify("로그아웃되었습니다.");
+    notify(message, type);
+  };
+  const handleLogout = () => {
+    // 서버의 Refresh Token도 폐기한다 (실패해도 화면은 로그아웃).
+    // 재발급으로 바뀌었을 수 있으니 React 상태가 아니라 저장소의 최신 값을 보낸다
+    const refreshToken = readAuth()?.refreshToken;
+    if (refreshToken) authApi.logout(refreshToken).catch(() => {});
+    clearSession("로그아웃되었습니다.");
   };
 
   const {
     accounts, selected, loading, setAccounts, setSelected,
     setLoading, loadAccounts, selectAccount, refreshAfterTransaction, refreshSilently
-  } = useAccount(auth, notify, handleLogout);
+  } = useAccount(auth, notify);
+
+  // 토큰이 만료되고 재발급도 실패하면 client가 알려 준다 — 어느 화면(계좌·대출)에서든 로그아웃
+  useEffect(() => {
+    const onExpired = () => clearSession("로그인이 만료되었습니다. 다시 로그인해 주세요.", "error");
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, []);
 
   const [loginEmail, setLoginEmail] = useState(auth?.email || "");
   const [loginName, setLoginName] = useState(auth?.name || "");
@@ -53,7 +68,7 @@ export default function App() {
     try {
       setLoading(true);
       const data = await authApi.login(loginEmail, loginPassword);
-      saveAuth({ token: data.token, email: data.email, name: data.name });
+      saveAuth({ token: data.token, refreshToken: data.refreshToken, email: data.email, name: data.name });
       setLoginPassword("");
       notify(`${data.name}님 환영합니다.`, "success");
     } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
