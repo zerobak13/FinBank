@@ -6,17 +6,21 @@ import com.finbank.backend.loan.domain.LoanAccount;
 import com.finbank.backend.loan.domain.LoanAccountStatus;
 import com.finbank.backend.loan.domain.LoanApplication;
 import com.finbank.backend.loan.domain.LoanProduct;
+import com.finbank.backend.loan.domain.OverdueHistory;
 import com.finbank.backend.loan.domain.ProductStatus;
 import com.finbank.backend.loan.domain.RepaymentSchedule;
 import com.finbank.backend.loan.domain.ScheduleStatus;
+import com.finbank.backend.loan.dto.RepaymentResponse;
 import com.finbank.backend.loan.repository.LoanAccountRepository;
 import com.finbank.backend.loan.repository.LoanProductRepository;
 import com.finbank.backend.loan.repository.OverdueHistoryRepository;
 import com.finbank.backend.loan.repository.RepaymentScheduleRepository;
+import com.finbank.backend.loan.service.LoanRepaymentService;
 import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.support.DatabaseCleaner;
 import com.finbank.backend.support.LoanApplicationFixture;
+import com.finbank.backend.support.OverdueFixture;
 import com.finbank.backend.support.TestAccountNumbers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -29,11 +33,23 @@ import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -59,6 +75,9 @@ class OverdueDetectionJobTest {
     @Autowired RepaymentScheduleRepository repaymentScheduleRepository;
     @Autowired OverdueHistoryRepository overdueHistoryRepository;
     @Autowired DatabaseCleaner cleaner;
+    @Autowired PlatformTransactionManager transactionManager;
+    @Autowired OverdueFixture overdueFixture;
+    @Autowired LoanRepaymentService loanRepaymentService;
 
     private static final String EMAIL = "batch@test.com";
     private static final LocalDate BASE_DATE = LocalDate.of(2026, 7, 1);
@@ -78,6 +97,10 @@ class OverdueDetectionJobTest {
 
     /** 회차 납기일을 직접 지정해 대출 1건을 만든다 */
     private LoanAccount givenLoanWithSchedules(LocalDate... dueDates) {
+        return givenLoanWithSchedules(account, dueDates);
+    }
+
+    private LoanAccount givenLoanWithSchedules(Account account, LocalDate... dueDates) {
         LoanApplication application = applicationFixture.executed(
                 member, product, account, new BigDecimal("12000000"), dueDates.length);
 
@@ -137,6 +160,109 @@ class OverdueDetectionJobTest {
         assertThat(overdueHistoryRepository.findByResolvedAtIsNull()).hasSize(2);
         assertThat(loanAccountRepository.findById(loan.getId()).orElseThrow().getStatus())
                 .isEqualTo(LoanAccountStatus.OVERDUE);
+    }
+
+    @Test
+    @DisplayName("읽어 둔 회차가 그 사이 상환됐으면 연체로 바꾸지 않고, 상환이 줄인 대출 잔액도 덮어쓰지 않는다")
+    void skipsScheduleRepaidAfterRead() {
+        LoanAccount loan = givenLoanWithSchedules(BASE_DATE.minusDays(5));
+        OverdueDetectionProcessor processor =
+                new OverdueDetectionProcessor(repaymentScheduleRepository, loanAccountRepository);
+        TransactionTemplate batchTx = new TransactionTemplate(transactionManager);
+        TransactionTemplate repaymentTx = new TransactionTemplate(transactionManager);
+        repaymentTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
+        OverdueHistory opened = batchTx.execute(status -> {
+            // 배치가 청크를 읽어 둔 시점 — 회차·대출이 이 트랜잭션의 1차 캐시에 올라간다
+            RepaymentSchedule read = repaymentScheduleRepository
+                    .findOverdueCandidates(BASE_DATE, 0L, PageRequest.of(0, 10)).get(0);
+            // 그 사이 다른 트랜잭션에서 그 회차의 상환이 끝난다 (회차 PAID + 대출 잔액 감소)
+            repaymentTx.executeWithoutResult(s -> {
+                repaymentScheduleRepository.markPaidIfPayable(read.getId(), LocalDateTime.now());
+                loanAccountRepository.findById(loan.getId()).orElseThrow()
+                        .repayPrincipal(read.getPrincipalAmount());
+            });
+            return processor.process(read);
+        });
+
+        assertThat(opened).isNull();
+        RepaymentSchedule schedule = schedulesOf(loan).get(0);
+        assertThat(schedule.getStatus()).isEqualTo(ScheduleStatus.PAID);
+        LoanAccount after = loanAccountRepository.findById(loan.getId()).orElseThrow();
+        assertThat(after.getStatus()).isEqualTo(LoanAccountStatus.ACTIVE);
+        assertThat(after.getBalance())
+                .isEqualByComparingTo(loan.getPrincipal().subtract(schedule.getPrincipalAmount()));
+        assertThat(overdueHistoryRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("감지와 상환이 같은 순간에 겹쳐도 데드락 없이 둘 다 끝난다 — 상환은 남은 연체 회차를 볼 때 자기 대출의 회차만 잠근다")
+    void detectionAndRepaymentAtTheSameTime_noDeadlock() throws Exception {
+        LoanAccount other = givenLoanWithSchedules(BASE_DATE.minusDays(5));   // 감지가 먼저 처리할 다른 대출
+        Account repayAccount = accountRepository.saveAndFlush(
+                new Account(member, TestAccountNumbers.next(), new BigDecimal("5000000")));
+        LoanAccount repaying = givenLoanWithSchedules(repayAccount,
+                BASE_DATE.minusDays(40), BASE_DATE.minusDays(10),             // 1회차는 이미 연체, 2회차는 오늘 연체가 될 차례
+                BASE_DATE.plusDays(20), BASE_DATE.plusDays(50), BASE_DATE.plusDays(80), BASE_DATE.plusDays(110));
+        RepaymentSchedule overdueFirst = schedulesOf(repaying).get(0);
+        overdueFixture.markScheduleOverdue(overdueFirst.getId());
+        overdueFixture.markLoanOverdue(repaying.getId());
+        overdueFixture.openHistory(overdueFirst, overdueFirst.getDueDate(), BigDecimal.ZERO, null);
+
+        OverdueDetectionProcessor processor =
+                new OverdueDetectionProcessor(repaymentScheduleRepository, loanAccountRepository);
+        TransactionTemplate batchTx = new TransactionTemplate(transactionManager);
+        ExecutorService repayer = Executors.newSingleThreadExecutor();
+        try {
+            Future<RepaymentResponse> repayment = batchTx.execute(status -> {
+                List<RepaymentSchedule> chunk = repaymentScheduleRepository
+                        .findOverdueCandidates(BASE_DATE, 0L, PageRequest.of(0, 10));   // [다른 대출 1회차, 상환 중인 대출 2회차]
+                OverdueHistory first = processor.process(chunk.get(0));               // 다른 대출의 회차를 연체로 — 아직 커밋 전
+
+                // 이 순간 1회차 상환이 들어온다. 남은 연체 회차를 상태 인덱스로 훑으면 방금 바뀐 다른 대출의 회차에서 배치를 기다린다
+                Future<RepaymentResponse> started = repayer.submit(() -> repayAs(repaying.getId(), 1));
+                pause();   // 상환이 끝나거나 락 대기에 들어갈 시간
+
+                // 배치는 상환 중인 대출을 잠그려 한다 — 상환이 배치를 기다리고 있다면 여기서 데드락
+                OverdueHistory second = processor.process(chunk.get(1));
+                overdueHistoryRepository.saveAll(List.of(first, second));               // Writer
+                return started;
+            });
+
+            RepaymentResponse res = repayment.get(10, TimeUnit.SECONDS);
+            assertThat(res.installmentNo()).isEqualTo(1);
+        } finally {
+            repayer.shutdownNow();
+        }
+
+        // 어느 쪽이 먼저 끝났든 결과는 같다: 1회차 상환 완료, 2회차는 연체, 대출은 연체
+        List<RepaymentSchedule> schedules = schedulesOf(repaying);
+        assertThat(schedules.get(0).getStatus()).isEqualTo(ScheduleStatus.PAID);
+        assertThat(schedules.get(1).getStatus()).isEqualTo(ScheduleStatus.OVERDUE);
+        assertThat(loanAccountRepository.findById(repaying.getId()).orElseThrow().getStatus())
+                .isEqualTo(LoanAccountStatus.OVERDUE);
+        assertThat(schedulesOf(other).get(0).getStatus()).isEqualTo(ScheduleStatus.OVERDUE);
+        assertThat(overdueHistoryRepository.findByResolvedAtIsNull()).hasSize(2);   // 다른 대출 1회차 + 2회차
+    }
+
+    /** 다른 스레드(= 다른 요청)에서 회원으로 로그인해 회차를 상환한다 */
+    private RepaymentResponse repayAs(Long loanId, int installmentNo) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(EMAIL, null, Collections.emptyList()));
+        try {
+            return loanRepaymentService.repay(loanId, installmentNo, UUID.randomUUID().toString());
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    private static void pause() {
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
     }
 
     @Test

@@ -11,9 +11,20 @@ package com.finbank.backend.loan.domain;
  * </pre>
  */
 public enum ApplicationStatus {
-    APPLIED,
-    APPROVED,
-    REJECTED,
-    EXECUTED,
-    CANCELED
+    APPLIED("심사 중"),
+    APPROVED("승인"),
+    REJECTED("심사 탈락"),
+    EXECUTED("실행됨"),
+    CANCELED("취소");
+
+    private final String label;
+
+    ApplicationStatus(String label) {
+        this.label = label;
+    }
+
+    /** 안내 문구용 한국어 이름 */
+    public String label() {
+        return label;
+    }
 }

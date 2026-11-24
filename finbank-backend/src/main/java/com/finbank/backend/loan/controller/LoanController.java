@@ -1,5 +1,6 @@
 package com.finbank.backend.loan.controller;
 
+import com.finbank.backend.config.SwaggerConfig;
 import com.finbank.backend.common.PageResponse;
 import com.finbank.backend.loan.dto.LoanDetailResponse;
 import com.finbank.backend.loan.dto.LoanExecutionResponse;
@@ -32,7 +33,7 @@ import java.util.List;
  * 서버는 같은 키의 두 번째 요청에 저장해둔 응답을 그대로 돌려주므로 돈은 한 번만 움직인다.</p>
  */
 @Tag(name = "Loans", description = "대출 실행/상환/조회")
-@SecurityRequirement(name = "bearerAuth")
+@SecurityRequirement(name = SwaggerConfig.SECURITY_SCHEME_NAME)
 @RestController
 @RequestMapping("/api/loans")
 public class LoanController {

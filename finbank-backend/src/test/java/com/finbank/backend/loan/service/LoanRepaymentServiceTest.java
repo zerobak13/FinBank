@@ -28,6 +28,7 @@ import com.finbank.backend.loan.repository.RepaymentScheduleRepository;
 import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.support.DatabaseCleaner;
+import com.finbank.backend.support.OverdueFixture;
 import com.finbank.backend.support.TestAccountNumbers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,6 +64,7 @@ class LoanRepaymentServiceTest {
     @Autowired AccountService accountService;
     @Autowired LoanAccountRepository loanAccountRepository;
     @Autowired LoanTransactionRepository loanTransactionRepository;
+    @Autowired OverdueFixture overdueFixture;
     @Autowired LoanProductRepository loanProductRepository;
     @Autowired RepaymentScheduleRepository repaymentScheduleRepository;
     @Autowired OverdueHistoryRepository overdueHistoryRepository;
@@ -120,14 +122,9 @@ class LoanRepaymentServiceTest {
         RepaymentSchedule first = repaymentScheduleRepository
                 .findFirstByLoanAccountAndStatusInOrderByInstallmentNoAsc(loanAccount, List.of(ScheduleStatus.PENDING))
                 .orElseThrow();
-        first.markOverdue();
-        repaymentScheduleRepository.saveAndFlush(first);
-        loanAccount.markOverdue();
-        loanAccountRepository.saveAndFlush(loanAccount);
-
-        OverdueHistory history = OverdueHistory.open(first, first.getDueDate());
-        history.accrue(penalty, first.getDueDate().plusDays(10));
-        return overdueHistoryRepository.saveAndFlush(history);
+        overdueFixture.markScheduleOverdue(first.getId());
+        overdueFixture.markLoanOverdue(loanAccount.getId());
+        return overdueFixture.openHistory(first, first.getDueDate(), penalty, first.getDueDate().plusDays(10));
     }
 
     @Test
@@ -263,6 +260,28 @@ class LoanRepaymentServiceTest {
         assertThat(overdueHistoryRepository.findById(history.getId()).orElseThrow().isResolved()).isTrue();
         assertThat(loanQueryService.getSchedules(loan.loanId()).get(0).status()).isEqualTo("PAID");
         assertThat(res.loanStatus()).isEqualTo(LoanAccountStatus.ACTIVE.name());
+    }
+
+    @Test
+    @DisplayName("스케줄 조회: 연체 회차에는 쌓인 연체이자가 함께 나오고, 그 회차를 갚으면 화면 금액(원리금+연체이자)이 그대로 빠진다")
+    void schedules_showPenaltyAccrued_equalToChargedAmount() {
+        BigDecimal penalty = new BigDecimal("12345");
+        overdueFirstInstallment(penalty);
+
+        List<RepaymentScheduleResponse> schedules = loanQueryService.getSchedules(loan.loanId());
+        RepaymentScheduleResponse first = schedules.get(0);
+        assertThat(first.status()).isEqualTo("OVERDUE");
+        assertThat(first.penaltyAccrued()).isEqualByComparingTo(penalty);
+        assertThat(schedules.get(1).penaltyAccrued()).isEqualByComparingTo(BigDecimal.ZERO);
+
+        BigDecimal balanceBefore = accountBalance();
+        loanRepaymentService.repay(loan.loanId(), 1, newKey());
+
+        assertThat(balanceBefore.subtract(accountBalance()))
+                .isEqualByComparingTo(first.totalAmount().add(first.penaltyAccrued()));
+        // 갚고 나면 이력이 닫혀 0으로 돌아간다
+        assertThat(loanQueryService.getSchedules(loan.loanId()).get(0).penaltyAccrued())
+                .isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test

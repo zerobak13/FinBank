@@ -3,6 +3,7 @@ package com.finbank.backend.account.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
 
@@ -14,9 +15,10 @@ import java.math.BigDecimal;
 public class AccountCreateRequest {
 
     @Schema(description = "초기 입금액 (0 이상, 원 단위 정수)", example = "50000")
+    @NotNull
     @DecimalMin("0")
     @Digits(integer = 15, fraction = 0)
-    private BigDecimal initialDeposit = BigDecimal.ZERO;
+    private BigDecimal initialDeposit = BigDecimal.ZERO;   // 생략하면 0, null을 직접 보내면 400
 
     public BigDecimal getInitialDeposit() { return initialDeposit; }
     public void setInitialDeposit(BigDecimal initialDeposit) { this.initialDeposit = initialDeposit; }

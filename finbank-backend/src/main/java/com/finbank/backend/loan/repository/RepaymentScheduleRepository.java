@@ -48,6 +48,21 @@ public interface RepaymentScheduleRepository extends JpaRepository<RepaymentSche
     }
 
     /**
+     * 조건부 연체 전이 PENDING → OVERDUE — 연체 감지 배치가 쓴다.
+     *
+     * <p>배치가 읽어 둔 엔티티를 고쳐 쓰면, 읽은 뒤에 끝난 상환(PAID)을 청크 끝에 옛 값으로 덮어쓴다.
+     * 이 UPDATE는 최신 커밋본을 보고 판단하므로, 그 사이 상환된 회차는 0행이 되어 건너뛴다.</p>
+     */
+    @Modifying
+    @Query("""
+            update RepaymentSchedule s
+               set s.status = com.finbank.backend.loan.domain.ScheduleStatus.OVERDUE
+             where s.id = :scheduleId
+               and s.status = com.finbank.backend.loan.domain.ScheduleStatus.PENDING
+            """)
+    int markOverdueIfPending(@Param("scheduleId") Long scheduleId);
+
+    /**
      * 연체 감지 배치의 Reader 쿼리 — <b>커서(id) 기반</b>.
      *
      * <p>페이지 번호(offset) 방식을 쓰지 않는 이유: 이 배치는 읽은 행의 {@code status}를
@@ -73,8 +88,24 @@ public interface RepaymentScheduleRepository extends JpaRepository<RepaymentSche
     Optional<RepaymentSchedule> findFirstByLoanAccountAndStatusOrderByInstallmentNoDesc(
             LoanAccount loanAccount, ScheduleStatus status);
 
-    /** 특정 상태의 남은 회차 수 — 연체 해소 판정 등에 사용 */
-    int countByLoanAccountAndStatusIn(LoanAccount loanAccount, List<ScheduleStatus> statuses);
+    /**
+     * 남은 연체 회차 ID — <b>잠금 조회</b>(최신 커밋본). 상환 뒤 연체 해소 판정에 쓴다.
+     *
+     * <p>일반 조회는 트랜잭션 첫 조회 시점의 스냅샷을 읽어서, 그 뒤에 연체 감지 배치가 연체로 바꾼 회차를
+     * 못 볼 수 있다(그러면 연체 회차가 남았는데 대출을 정상으로 되돌린다). 잠금 조회는 최신 커밋본을 읽는다.</p>
+     *
+     * <p><b>인덱스를 고정한다.</b> 연체 회차가 적으면 옵티마이저가 상태 인덱스(status, due_date)를 고르는데,
+     * 그러면 잠금 조회가 <b>다른 대출의 연체 회차까지</b> 훑으며 잠근다. 같은 시각 감지 배치가 다른 대출의 회차를
+     * 연체로 바꾸는 중이면 상환은 그 배치를 기다리고, 배치는 상환이 쥔 이 대출의 락을 기다려 데드락이 된다.
+     * (대출, 회차) 유니크 인덱스로 이 대출의 회차만 훑는다 — 이 대출은 상환이 이미 대출 락으로 지키고 있다.</p>
+     */
+    @Query(value = """
+            select s.id from repayment_schedules s force index (uq_schedule_installment)
+             where s.loan_account_id = :loanAccountId
+               and s.status = 'OVERDUE'
+               for update
+            """, nativeQuery = true)
+    List<Long> lockOverdueScheduleIds(@Param("loanAccountId") Long loanAccountId);
 
     /**
      * 전액 중도상환으로 남은 회차 일괄 무효화 (PENDING → CANCELED).

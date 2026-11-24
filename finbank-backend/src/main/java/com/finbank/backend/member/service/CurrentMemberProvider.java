@@ -31,7 +31,7 @@ public class CurrentMemberProvider {
         }
         String email = authentication.getPrincipal().toString();
         return memberRepository.findByEmail(email)
-                .orElseThrow(() -> new NotFoundException("Member not found: " + email));
+                .orElseThrow(() -> new NotFoundException("회원을 찾을 수 없습니다."));
     }
 
     /** 트랜잭션 밖(멱등 선점 단계)에서 식별자만 필요할 때 */

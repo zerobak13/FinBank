@@ -15,7 +15,7 @@ import java.util.Map;
 
 /**
  * 순수 자바 계산기를 스프링 세계에 연결하는 유일한 지점.
- * 대출 실행·상환 서비스(C3)는 이 Map/빈에서 필요한 계산기를 꺼내 쓴다.
+ * 대출 실행·상환 서비스와 연체 배치는 이 Map/빈에서 필요한 계산기를 꺼내 쓴다.
  *
  * <p>계산기 자체에 {@code @Component}를 붙이지 않는 이유: 돈 계산 로직을
  * 프레임워크에서 독립시켜 두면 단위테스트가 컨텍스트 없이 ms 단위로 돌아간다.</p>
@@ -44,7 +44,7 @@ public class LoanCalculatorConfig {
         return new PrepaymentFeeCalculator();
     }
 
-    /** 연체이자 (D단계 배치가 사용) */
+    /** 연체이자 — 매일 밤 연체이자 적립 배치가 사용 */
     @Bean
     public OverdueInterestCalculator overdueInterestCalculator() {
         return new OverdueInterestCalculator();

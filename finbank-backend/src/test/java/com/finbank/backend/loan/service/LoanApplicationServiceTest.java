@@ -10,6 +10,7 @@ import com.finbank.backend.loan.domain.*;
 import com.finbank.backend.loan.dto.LoanApplicationResponse;
 import com.finbank.backend.loan.dto.LoanApplyRequest;
 import com.finbank.backend.loan.repository.LoanAccountRepository;
+import com.finbank.backend.loan.repository.LoanApplicationRepository;
 import com.finbank.backend.loan.repository.LoanProductRepository;
 import com.finbank.backend.loan.service.review.CreditLimitRule;
 import com.finbank.backend.loan.service.review.NoActiveOverdueRule;
@@ -18,6 +19,7 @@ import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.auth.repository.RefreshTokenRepository;
 import com.finbank.backend.account.repository.TransactionLogRepository;
 import com.finbank.backend.support.LoanApplicationFixture;
+import com.finbank.backend.support.OverdueFixture;
 import com.finbank.backend.support.TestAccountNumbers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +29,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -45,6 +50,9 @@ class LoanApplicationServiceTest {
     @Autowired LoanApplicationService service;
     @Autowired LoanProductRepository loanProductRepository;
     @Autowired LoanApplicationFixture applicationFixture;
+    @Autowired OverdueFixture overdueFixture;
+    @Autowired LoanApplicationRepository loanApplicationRepository;
+    @Autowired PlatformTransactionManager transactionManager;
     @Autowired LoanAccountRepository loanAccountRepository;
     @Autowired AccountRepository accountRepository;
     @Autowired MemberRepository memberRepository;
@@ -163,12 +171,26 @@ class LoanApplicationServiceTest {
     }
 
     @Test
+    @DisplayName("승인만 받고 실행하지 않은 신청도 한도에 센다 — 3,000만 승인 뒤 2,500만 신청 → REJECTED")
+    void apply_rejected_creditLimit_countsApprovedNotExecuted() {
+        Account account = createActiveAccount();
+        LoanApplicationResponse first = service.apply(
+                new LoanApplyRequest(product.getId(), account.getId(), new BigDecimal("30000000"), 12));
+        assertThat(first.status()).isEqualTo(ApplicationStatus.APPROVED);   // 아직 실행 전 (대출 잔액 0)
+
+        LoanApplicationResponse second = service.apply(
+                new LoanApplyRequest(product.getId(), account.getId(), new BigDecimal("25000000"), 12));
+
+        assertThat(second.status()).isEqualTo(ApplicationStatus.REJECTED);
+        assertThat(second.rejectReason()).isEqualTo(CreditLimitRule.CODE);
+    }
+
+    @Test
     @DisplayName("연체 중인 대출이 있으면 → REJECTED (ACTIVE_OVERDUE_EXISTS)")
     void apply_rejected_overdue() {
         Account account = createActiveAccount();
         LoanAccount overdueLoan = createExecutedLoan(account, new BigDecimal("30000000"));
-        overdueLoan.markOverdue();
-        loanAccountRepository.saveAndFlush(overdueLoan);
+        overdueFixture.markLoanOverdue(overdueLoan.getId());
 
         // 한도 룰(룰1)은 통과하도록 소액(1,000만) 신청 → 룰2에서 탈락해야 함
         LoanApplicationResponse res = service.apply(
@@ -241,5 +263,45 @@ class LoanApplicationServiceTest {
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_STATE);
         assertThat(service.getApplication(executed.getId()).status()).isEqualTo(ApplicationStatus.EXECUTED);
+    }
+
+    @Test
+    @DisplayName("심사에서 떨어진 신청은 취소할 수 없다 → 409 INVALID_STATE")
+    void cancel_rejectedApplication_conflict() {
+        Account account = createActiveAccount();
+        createExecutedLoan(account, new BigDecimal("30000000"));
+        LoanApplicationResponse rejected = service.apply(
+                new LoanApplyRequest(product.getId(), account.getId(), new BigDecimal("25000000"), 12));
+        assertThat(rejected.status()).isEqualTo(ApplicationStatus.REJECTED);
+
+        assertThatThrownBy(() -> service.cancel(rejected.id()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_STATE);
+        assertThat(service.getApplication(rejected.id()).status()).isEqualTo(ApplicationStatus.REJECTED);
+    }
+
+    @Test
+    @DisplayName("취소가 신청을 읽어 둔 사이 실행이 끝났으면 409 — 실행된 신청이 CANCELED로 덮이지 않는다")
+    void cancel_afterConcurrentExecution_conflict() {
+        Account account = createActiveAccount();
+        LoanApplicationResponse res = service.apply(
+                new LoanApplyRequest(product.getId(), account.getId(), new BigDecimal("10000000"), 12));
+        TransactionTemplate cancelTx = new TransactionTemplate(transactionManager);
+        TransactionTemplate executeTx = new TransactionTemplate(transactionManager);
+        executeTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
+        assertThatThrownBy(() -> cancelTx.executeWithoutResult(status -> {
+            // 취소 쪽이 신청을 먼저 읽어 둔다 — 이 트랜잭션의 1차 캐시에는 APPROVED
+            loanApplicationRepository.findById(res.id()).orElseThrow();
+            // 그 사이 다른 트랜잭션에서 실행 전이가 끝난다
+            executeTx.executeWithoutResult(s -> loanApplicationRepository.markExecutedIfApproved(res.id()));
+            service.cancel(res.id());
+        }))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_STATE);
+
+        assertThat(service.getApplication(res.id()).status()).isEqualTo(ApplicationStatus.EXECUTED);
     }
 }

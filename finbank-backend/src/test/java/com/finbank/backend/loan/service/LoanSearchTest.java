@@ -17,6 +17,7 @@ import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.support.DatabaseCleaner;
 import com.finbank.backend.support.LoanApplicationFixture;
+import com.finbank.backend.support.OverdueFixture;
 import com.finbank.backend.support.TestAccountNumbers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,6 +47,7 @@ class LoanSearchTest {
     @Autowired LoanQueryService loanQueryService;
     @Autowired LoanProductRepository loanProductRepository;
     @Autowired LoanApplicationFixture applicationFixture;
+    @Autowired OverdueFixture overdueFixture;
     @Autowired LoanAccountRepository loanAccountRepository;
     @Autowired AccountRepository accountRepository;
     @Autowired MemberRepository memberRepository;
@@ -91,12 +93,15 @@ class LoanSearchTest {
         LoanApplication application = applicationFixture.executed(owner, product, linked, amount, 12);
 
         LoanAccount loan = LoanAccount.execute(application, linked, executedAt);
-        if (status == LoanAccountStatus.OVERDUE) {
-            loan.markOverdue();
-        } else if (status == LoanAccountStatus.PAID_OFF) {
+        if (status == LoanAccountStatus.PAID_OFF) {
             loan.repayPrincipal(loan.getBalance());
         }
-        return loanAccountRepository.saveAndFlush(loan);
+        LoanAccount saved = loanAccountRepository.saveAndFlush(loan);
+        if (status == LoanAccountStatus.OVERDUE) {
+            overdueFixture.markLoanOverdue(saved.getId());   // 운영과 같은 조건부 UPDATE로
+            return loanAccountRepository.findById(saved.getId()).orElseThrow();
+        }
+        return saved;
     }
 
     private PageResponse<LoanSummaryResponse> search(LoanSearchCondition condition) {

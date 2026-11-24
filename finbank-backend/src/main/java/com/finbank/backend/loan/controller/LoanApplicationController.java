@@ -1,5 +1,6 @@
 package com.finbank.backend.loan.controller;
 
+import com.finbank.backend.config.SwaggerConfig;
 import com.finbank.backend.loan.dto.LoanApplicationResponse;
 import com.finbank.backend.loan.dto.LoanApplyRequest;
 import com.finbank.backend.loan.service.LoanApplicationService;
@@ -18,7 +19,7 @@ import java.util.List;
 
 /** 대출 신청 API — 신청 즉시 자동심사가 수행되어 응답에 승인/탈락이 담긴다 */
 @Tag(name = "Loan Applications", description = "대출 신청/자동심사")
-@SecurityRequirement(name = "bearerAuth")
+@SecurityRequirement(name = SwaggerConfig.SECURITY_SCHEME_NAME)
 @RestController
 @RequestMapping("/api/loans/applications")
 public class LoanApplicationController {

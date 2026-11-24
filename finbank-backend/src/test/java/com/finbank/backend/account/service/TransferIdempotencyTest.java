@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 이체 멱등성 증명 — 상환(C3)에서 만든 멱등 인프라를 이체로 확장한 결과.
+ * 이체 멱등성 증명 — 대출 상환에서 먼저 만든 멱등 인프라를 이체로 확장한 결과.
  *
  * <p>"버튼 두 번 / 네트워크 재시도"가 가장 위험한 곳은 이체다. 같은 멱등키로 몇 번이 오든
  * <b>돈은 한 번만</b> 움직여야 한다: TRANSFER_OUT·TRANSFER_IN 로그 각 1건, 잔액은 이체액만큼만 변동.</p>

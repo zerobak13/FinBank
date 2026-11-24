@@ -98,10 +98,14 @@ public class LoanTransaction {
                 loan.getBalance(), idempotencyKey);
     }
 
-    /** 연체이자 가산 (배치): 쌓인 연체이자를 연체이자 부분에 적는다(발생). 원금 변동 없음. */
-    public static LoanTransaction overdueInterest(LoanAccount loan, BigDecimal penalty) {
+    /**
+     * 연체이자 가산 (배치): 쌓인 연체이자를 연체이자 부분에 적는다(발생). 원금 변동 없음.
+     *
+     * @param currentBalance 대출 행을 잠그고 읽은 최신 잔액 (배치가 읽어 둔 엔티티의 잔액은 낡았을 수 있다)
+     */
+    public static LoanTransaction overdueInterest(LoanAccount loan, BigDecimal penalty, BigDecimal currentBalance) {
         return create(loan, LoanTransactionType.OVERDUE_INTEREST,
-                BigDecimal.ZERO, BigDecimal.ZERO, penalty, loan.getBalance(), null);
+                BigDecimal.ZERO, BigDecimal.ZERO, penalty, currentBalance, null);
     }
 
     private static LoanTransaction create(LoanAccount loan, LoanTransactionType type,

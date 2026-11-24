@@ -128,14 +128,11 @@ public class LoanAccount {
         }
     }
 
-    /** 연체 전이: ACTIVE → OVERDUE (배치가 호출) */
-    public void markOverdue() {
-        if (this.status == LoanAccountStatus.ACTIVE) {
-            this.status = LoanAccountStatus.OVERDUE;
-        }
-    }
+    // 연체 전이(ACTIVE → OVERDUE)는 도메인 메서드가 없다 — 연체 감지 배치가 조건부 UPDATE
+    // (LoanAccountRepository.markOverdueIfActive)로만 바꾼다. 엔티티를 고쳐 쓰면 행 전체가 다시 쓰여,
+    // 그 사이 상환이 줄인 잔액을 배치가 읽었던 옛 값으로 덮어쓴다.
 
-    /** 연체 해소: OVERDUE → ACTIVE (연체 회차가 모두 정리됐을 때) */
+    /** 연체 해소: OVERDUE → ACTIVE (상환이 대출을 잠근 상태에서, 연체 회차가 모두 정리됐을 때) */
     public void resolveOverdue() {
         if (this.status == LoanAccountStatus.OVERDUE) {
             this.status = LoanAccountStatus.ACTIVE;

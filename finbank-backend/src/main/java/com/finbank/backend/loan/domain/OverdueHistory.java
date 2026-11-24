@@ -13,6 +13,10 @@ import java.time.LocalDate;
  *
  * <p>lastAccruedAt으로 "오늘 이미 가산했는지"를 판별해 배치 재실행 시
  * 이중 가산을 방지한다(배치 멱등).</p>
+ *
+ * <p>누적은 도메인 메서드가 아니라 조건부 UPDATE({@code OverdueHistoryRepository.accrueIfOpen})로만 한다.
+ * 배치가 읽어 둔 이력을 고쳐 쓰면, 그 사이 상환이 닫은 이력을 다시 열어 버리기 때문이다.
+ * 이력을 닫는 {@link #resolve}는 상환이 이력을 잠금 조회한 뒤에만 부른다.</p>
  */
 @Entity
 @Table(name = "overdue_histories")
@@ -60,12 +64,6 @@ public class OverdueHistory {
         h.overdueStart = overdueStart;
         h.overdueAmount = schedule.getTotalAmount();
         return h;
-    }
-
-    /** 연체이자 일할 가산 (가산 배치가 호출) */
-    public void accrue(BigDecimal penalty, LocalDate accruedAt) {
-        this.penaltyAccrued = this.penaltyAccrued.add(penalty);
-        this.lastAccruedAt = accruedAt;
     }
 
     /** 연체 해소 (연체 회차 상환 시) */

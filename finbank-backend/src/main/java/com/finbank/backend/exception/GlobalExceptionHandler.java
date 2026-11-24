@@ -5,15 +5,27 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
 /**
- * 전역 예외 처리기. 서비스에서 던진 예외를 일관된 ApiError 응답과 적절한 HTTP 상태코드로 변환한다.
- * 404(NotFound) / 403(Forbidden) / 400(Business·Validation) / 500(그 외)로 매핑한다.
+ * 전역 예외 처리기. 서비스에서 던진 예외를 일관된 ApiError 응답과 알맞은 HTTP 상태로 바꾼다.
+ *
+ * <ul>
+ *   <li>비즈니스 예외 — 예외가 가진 {@link ErrorCode}가 상태를 정한다 (400·401·409·422·503)</li>
+ *   <li>404 NotFound · 403 Forbidden</li>
+ *   <li>요청 자체가 잘못된 경우 — 검증 실패·헤더나 파라미터 누락·읽을 수 없는 본문·형식이 틀린 값은 400,
+ *       없는 주소는 404, 지원하지 않는 요청 방식은 405처럼 스프링이 정해 둔 상태 그대로</li>
+ *   <li>그 밖의 예상하지 못한 예외만 500 (로그에 스택 트레이스)</li>
+ * </ul>
  */
 @ControllerAdvice
 public class GlobalExceptionHandler {
@@ -61,6 +73,28 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(error, HttpStatus.CONFLICT);
     }
 
+    /** 필수 쿼리 파라미터 누락 — 입금 금액을 비워 보낸 경우({@code ?amount=})도 여기로 온다 */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiError> handleMissingParameter(MissingServletRequestParameterException ex) {
+        ApiError error = new ApiError(ex.getParameterName() + " 값이 필요합니다.", "MISSING_PARAMETER");
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
+    /** 읽을 수 없는 요청 본문 — 깨진 JSON, 숫자 자리에 문자 등 */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleUnreadableBody(HttpMessageNotReadableException ex) {
+        ApiError error = new ApiError("요청 본문을 읽을 수 없습니다. JSON 형식과 값의 타입을 확인해 주세요.",
+                "INVALID_REQUEST_BODY");
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
+    /** 경로·쿼리 값의 형식이 틀림 — 예: 계좌 ID 자리에 문자 ({@code /api/accounts/abc}) */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        ApiError error = new ApiError(ex.getName() + " 값의 형식이 올바르지 않습니다.", "INVALID_PARAMETER");
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex) {
         String msg = ex.getBindingResult().getAllErrors().get(0).getDefaultMessage();
@@ -70,8 +104,23 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleException(Exception ex) {
+        // 스프링이 상태를 정해 둔 요청 오류(없는 주소 404, 지원하지 않는 요청 방식 405 등)는 그 상태 그대로.
+        // 스프링 부트 3.2부터 없는 주소는 NoResourceFoundException으로 여기까지 오므로, 이 분기가 없으면 500이 된다.
+        if (ex instanceof ErrorResponse errorResponse && errorResponse.getStatusCode().is4xxClientError()) {
+            HttpStatusCode status = errorResponse.getStatusCode();
+            return new ResponseEntity<>(new ApiError(clientErrorMessage(status), "HTTP_" + status.value()), status);
+        }
         log.error("처리되지 않은 예외 발생", ex);
         ApiError error = new ApiError("Internal server error", "INTERNAL_ERROR");
         return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    private static String clientErrorMessage(HttpStatusCode status) {
+        return switch (status.value()) {
+            case 404 -> "요청한 주소를 찾을 수 없습니다.";
+            case 405 -> "지원하지 않는 요청 방식입니다.";
+            case 415 -> "지원하지 않는 본문 형식입니다.";
+            default -> "잘못된 요청입니다.";
+        };
     }
 }
