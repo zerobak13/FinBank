@@ -9,9 +9,8 @@ import com.finbank.backend.exception.ErrorCode;
 import com.finbank.backend.exception.ForbiddenException;
 import com.finbank.backend.exception.NotFoundException;
 import com.finbank.backend.account.repository.AccountRepository;
-import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.account.repository.TransactionLogRepository;
-import org.junit.jupiter.api.AfterEach;
+import com.finbank.backend.member.service.CurrentMemberProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,11 +19,8 @@ import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
-import java.util.Collections;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -38,9 +34,7 @@ import org.mockito.quality.Strictness;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class TransferRuleTest {
 
-    private static final String TEST_EMAIL = "test@test.com";
-
-    @Mock MemberRepository memberRepository;
+    @Mock CurrentMemberProvider currentMemberProvider;
     @Mock AccountRepository accountRepository;
     @Mock TransactionLogRepository transactionLogRepository;
     @Mock IdempotentExecutor idempotentExecutor;
@@ -50,21 +44,11 @@ class TransferRuleTest {
     private Member currentMember;
 
     @BeforeEach
-    void setUpAuth() {
-        // SecurityContext 세팅
-        UsernamePasswordAuthenticationToken auth =
-                new UsernamePasswordAuthenticationToken(TEST_EMAIL, null, Collections.emptyList());
-        SecurityContextHolder.getContext().setAuthentication(auth);
-
-        // 현재 로그인 사용자(Member) Mock
+    void setUpCurrentMember() {
+        // 현재 로그인 사용자(Member) Mock — 회원 조회는 CurrentMemberProvider 한 곳이 맡는다
         currentMember = mock(Member.class);
         when(currentMember.getId()).thenReturn(1L);
-        when(memberRepository.findByEmail(TEST_EMAIL)).thenReturn(Optional.of(currentMember));
-    }
-
-    @AfterEach
-    void clear() {
-        SecurityContextHolder.clearContext();
+        when(currentMemberProvider.current()).thenReturn(currentMember);
     }
 
     private Account mockAccount(Long id, Long ownerId, String accountNumber, BigDecimal balance, boolean locked) {

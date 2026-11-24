@@ -30,7 +30,7 @@ public class LoanApplicationController {
     }
 
     @Operation(summary = "대출 신청 (즉시 자동심사)",
-            description = "활성 계좌 보유 · 한도(기존 대출 잔액 합산) · 연체 이력 3개 룰로 즉시 심사합니다.")
+            description = "한도(기존 대출 잔액 합산) · 진행 중인 연체 2개 룰로 즉시 심사합니다.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "신청 접수 (body의 status로 승인/탈락 확인)"),
             @ApiResponse(responseCode = "404", description = "판매 중인 상품이 아님"),

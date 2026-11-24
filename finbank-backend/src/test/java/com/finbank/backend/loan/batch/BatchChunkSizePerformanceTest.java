@@ -7,11 +7,11 @@ import com.finbank.backend.loan.domain.LoanApplication;
 import com.finbank.backend.loan.domain.LoanProduct;
 import com.finbank.backend.loan.domain.ProductStatus;
 import com.finbank.backend.loan.repository.LoanAccountRepository;
-import com.finbank.backend.loan.repository.LoanApplicationRepository;
 import com.finbank.backend.loan.repository.LoanProductRepository;
 import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.support.DatabaseCleaner;
+import com.finbank.backend.support.LoanApplicationFixture;
 import com.finbank.backend.support.TestAccountNumbers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -57,7 +57,7 @@ class BatchChunkSizePerformanceTest {
     @Autowired MemberRepository memberRepository;
     @Autowired AccountRepository accountRepository;
     @Autowired LoanProductRepository loanProductRepository;
-    @Autowired LoanApplicationRepository loanApplicationRepository;
+    @Autowired LoanApplicationFixture applicationFixture;
     @Autowired LoanAccountRepository loanAccountRepository;
     @Autowired DatabaseCleaner cleaner;
 
@@ -125,10 +125,7 @@ class BatchChunkSizePerformanceTest {
                 new Account(member, TestAccountNumbers.next(), new BigDecimal("1000000")));
         LoanProduct product = loanProductRepository.findByStatus(ProductStatus.ON_SALE).get(0);
 
-        LoanApplication application = new LoanApplication(member, product, account, new BigDecimal("12000000"), 12);
-        application.approve();
-        application.markExecuted();
-        loanApplicationRepository.saveAndFlush(application);
+        LoanApplication application = applicationFixture.executed(member, product, account, new BigDecimal("12000000"), 12);
 
         LoanAccount loan = loanAccountRepository.saveAndFlush(
                 LoanAccount.execute(application, account, BASE_DATE.minusYears(1)));

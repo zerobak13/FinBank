@@ -3,6 +3,7 @@ package com.finbank.backend.common.idempotency;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finbank.backend.exception.BusinessException;
+import com.finbank.backend.exception.ErrorCode;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
@@ -76,10 +77,10 @@ public class IdempotentExecutor {
     /** 키는 DB 컬럼 길이(64)를 넘을 수 없다 — 잘린 키가 다른 요청과 충돌하는 사고를 미리 막는다. */
     private void validateKey(String idemKey) {
         if (idemKey == null || idemKey.isBlank()) {
-            throw new BusinessException("Idempotency-Key 헤더가 필요합니다.");
+            throw new BusinessException(ErrorCode.IDEMPOTENCY_KEY_REQUIRED);
         }
         if (idemKey.length() > 64) {
-            throw new BusinessException("Idempotency-Key는 64자 이하여야 합니다.");
+            throw new BusinessException(ErrorCode.IDEMPOTENCY_KEY_TOO_LONG);
         }
     }
 

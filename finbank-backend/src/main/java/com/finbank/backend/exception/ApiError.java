@@ -9,7 +9,7 @@ public class ApiError {
 
     /** 사용자에게 보여줄 에러 메시지 */
     private String message;
-    /** 에러 분류 코드 (NOT_FOUND / FORBIDDEN / BUSINESS_ERROR / VALIDATION_ERROR / INTERNAL_ERROR) */
+    /** 에러 분류 코드 — 비즈니스 예외는 {@link ErrorCode} 이름, 그 밖에 NOT_FOUND / FORBIDDEN / VALIDATION_ERROR / INTERNAL_ERROR 등 */
     private String code;
     /** 에러 발생 시각 */
     private LocalDateTime timestamp = LocalDateTime.now();

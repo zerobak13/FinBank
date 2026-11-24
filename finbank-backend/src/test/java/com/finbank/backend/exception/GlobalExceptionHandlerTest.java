@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * ErrorCode 기반 예외 매핑 검증 (순수 단위 테스트 — Spring 컨텍스트/DB 불필요).
- * 레거시(문자열) 예외의 기존 동작이 유지되는지도 함께 확인한다(점진 이관의 안전망).
+ * 모든 비즈니스 예외는 코드를 가지며, HTTP 상태와 코드명은 코드가 정한다.
  */
 class GlobalExceptionHandlerTest {
 
@@ -39,12 +39,17 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    @DisplayName("레거시 문자열 예외는 기존대로 400 BUSINESS_ERROR로 매핑된다")
-    void legacy_message_exception_maps_to_400() {
-        ResponseEntity<ApiError> res =
-                handler.handleBusiness(new BusinessException("잔액이 부족합니다."));
+    @DisplayName("인증 실패는 401, 이메일 중복은 409, 서버 쪽 일시 장애는 503 — 문자열 예외 시절의 400 일괄 처리가 없다")
+    void auth_conflict_and_unavailable_codes_map_to_their_status() {
+        ResponseEntity<ApiError> login = handler.handleBusiness(new BusinessException(ErrorCode.LOGIN_FAILED));
+        assertThat(login.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(login.getBody().getCode()).isEqualTo("LOGIN_FAILED");
 
-        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(res.getBody().getCode()).isEqualTo("BUSINESS_ERROR");
+        ResponseEntity<ApiError> duplicate = handler.handleBusiness(new BusinessException(ErrorCode.DUPLICATE_EMAIL));
+        assertThat(duplicate.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+        ResponseEntity<ApiError> numbering =
+                handler.handleBusiness(new BusinessException(ErrorCode.ACCOUNT_NUMBER_GENERATION_FAILED));
+        assertThat(numbering.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
     }
 }

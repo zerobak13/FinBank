@@ -42,7 +42,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // 2) JWT 처리
         // JWT는 서명으로 자체 검증되므로 인증 단계에서 회원 존재 여부를 DB로 확인하지 않는다.
-        // (요청마다 발생하던 findByEmail 제거) 실제 회원 엔티티가 필요한 지점(getCurrentMember)에서만 조회한다.
+        // (요청마다 발생하던 findByEmail 제거) 실제 회원 엔티티가 필요한 지점(CurrentMemberProvider)에서만 조회한다.
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);

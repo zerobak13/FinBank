@@ -12,11 +12,11 @@ import com.finbank.backend.loan.domain.RepaymentType;
 import com.finbank.backend.loan.dto.LoanSearchCondition;
 import com.finbank.backend.loan.dto.LoanSummaryResponse;
 import com.finbank.backend.loan.repository.LoanAccountRepository;
-import com.finbank.backend.loan.repository.LoanApplicationRepository;
 import com.finbank.backend.loan.repository.LoanProductRepository;
 import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.support.DatabaseCleaner;
+import com.finbank.backend.support.LoanApplicationFixture;
 import com.finbank.backend.support.TestAccountNumbers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,7 +45,7 @@ class LoanSearchTest {
 
     @Autowired LoanQueryService loanQueryService;
     @Autowired LoanProductRepository loanProductRepository;
-    @Autowired LoanApplicationRepository loanApplicationRepository;
+    @Autowired LoanApplicationFixture applicationFixture;
     @Autowired LoanAccountRepository loanAccountRepository;
     @Autowired AccountRepository accountRepository;
     @Autowired MemberRepository memberRepository;
@@ -88,10 +88,7 @@ class LoanSearchTest {
     /** 검색 대상 데이터를 직접 만든다 (실행 API를 태우면 계좌 잔액·심사 룰에 묶여 조합을 만들기 어렵다) */
     private LoanAccount givenLoan(Member owner, Account linked, LoanProduct product,
                                   BigDecimal amount, LocalDate executedAt, LoanAccountStatus status) {
-        LoanApplication application = new LoanApplication(owner, product, linked, amount, 12);
-        application.approve();
-        application.markExecuted();
-        loanApplicationRepository.saveAndFlush(application);
+        LoanApplication application = applicationFixture.executed(owner, product, linked, amount, 12);
 
         LoanAccount loan = LoanAccount.execute(application, linked, executedAt);
         if (status == LoanAccountStatus.OVERDUE) {

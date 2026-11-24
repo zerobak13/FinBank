@@ -10,7 +10,6 @@ import com.finbank.backend.loan.domain.*;
 import com.finbank.backend.loan.dto.LoanApplicationResponse;
 import com.finbank.backend.loan.dto.LoanApplyRequest;
 import com.finbank.backend.loan.repository.LoanAccountRepository;
-import com.finbank.backend.loan.repository.LoanApplicationRepository;
 import com.finbank.backend.loan.repository.LoanProductRepository;
 import com.finbank.backend.loan.service.review.CreditLimitRule;
 import com.finbank.backend.loan.service.review.NoActiveOverdueRule;
@@ -18,6 +17,7 @@ import com.finbank.backend.account.repository.AccountRepository;
 import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.auth.repository.RefreshTokenRepository;
 import com.finbank.backend.account.repository.TransactionLogRepository;
+import com.finbank.backend.support.LoanApplicationFixture;
 import com.finbank.backend.support.TestAccountNumbers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,7 +44,7 @@ class LoanApplicationServiceTest {
 
     @Autowired LoanApplicationService service;
     @Autowired LoanProductRepository loanProductRepository;
-    @Autowired LoanApplicationRepository loanApplicationRepository;
+    @Autowired LoanApplicationFixture applicationFixture;
     @Autowired LoanAccountRepository loanAccountRepository;
     @Autowired AccountRepository accountRepository;
     @Autowired MemberRepository memberRepository;
@@ -81,10 +81,7 @@ class LoanApplicationServiceTest {
 
     /** 잔액 balance의 실행된 대출 1건 생성 (한도/연체 룰 테스트용) */
     private LoanAccount createExecutedLoan(Account linked, BigDecimal amount) {
-        LoanApplication app = new LoanApplication(member, product, linked, amount, 12);
-        app.approve();
-        app.markExecuted();
-        loanApplicationRepository.saveAndFlush(app);
+        LoanApplication app = applicationFixture.executed(member, product, linked, amount, 12);
         return loanAccountRepository.saveAndFlush(LoanAccount.execute(app, linked, LocalDate.now()));
     }
 
@@ -231,5 +228,18 @@ class LoanApplicationServiceTest {
         service.cancel(res.id());
 
         assertThat(service.getApplication(res.id()).status()).isEqualTo(ApplicationStatus.CANCELED);
+    }
+
+    @Test
+    @DisplayName("실행된 신청은 취소할 수 없다 → 409 INVALID_STATE (상태는 EXECUTED 그대로)")
+    void cancel_executedApplication_conflict() {
+        Account account = createActiveAccount();
+        LoanApplication executed = applicationFixture.executed(member, product, account, new BigDecimal("10000000"), 12);
+
+        assertThatThrownBy(() -> service.cancel(executed.getId()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_STATE);
+        assertThat(service.getApplication(executed.getId()).status()).isEqualTo(ApplicationStatus.EXECUTED);
     }
 }

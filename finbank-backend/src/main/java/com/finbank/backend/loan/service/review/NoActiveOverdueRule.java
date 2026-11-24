@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Optional;
 
-/** 룰 3: 진행 중인 연체(OVERDUE) 대출이 있으면 신규 대출 불가. */
+/** 룰 2: 진행 중인 연체(OVERDUE) 대출이 있으면 신규 대출 불가. */
 @Component
 @Order(2)
 public class NoActiveOverdueRule implements LoanReviewer {
