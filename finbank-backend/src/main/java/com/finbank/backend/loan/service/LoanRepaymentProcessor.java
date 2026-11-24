@@ -123,9 +123,10 @@ public class LoanRepaymentProcessor {
         overdue.ifPresent(history -> history.resolve(LocalDate.now()));
         resolveOverdueIfCleared(loan);
 
-        // 원장은 상환 한 건 = 한 줄 = 계좌 출금액. 연체이자는 이자 부분에 합산한다 (중도상환 수수료와 같은 방식)
+        // 원장은 상환 한 건 = 한 줄 = 계좌 출금액. 정상이자와 연체이자는 칸을 나눠 적는다
+        // (가산 배치가 남긴 OVERDUE_INTEREST는 발생, 여기 연체이자 부분은 수납 — 둘을 더하지 않는다)
         loanTransactionRepository.save(
-                LoanTransaction.repayment(loan, principal, interest.add(penalty), idempotencyKey));
+                LoanTransaction.repayment(loan, principal, interest, penalty, idempotencyKey));
 
         RepaymentResponse response = new RepaymentResponse(
                 loan.getId(),

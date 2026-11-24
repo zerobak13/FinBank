@@ -149,10 +149,15 @@ class LoanRepaymentServiceTest {
         // 대출 잔액 = 원금 - 회차 원금
         assertThat(res.loanBalanceAfter()).isEqualByComparingTo(LOAN_AMOUNT.subtract(first.principalAmount()));
 
-        // 스케줄은 PAID, 원장에는 상환 1건
+        // 스케줄은 PAID, 원장에는 상환 1건 — 연체가 아니므로 연체이자 부분은 0
         assertThat(loanQueryService.getSchedules(loan.loanId()).get(0).status()).isEqualTo("PAID");
         assertThat(loanTransactionRepository.findAll().stream()
-                .filter(tx -> tx.getType() == LoanTransactionType.REPAYMENT).toList()).hasSize(1);
+                .filter(tx -> tx.getType() == LoanTransactionType.REPAYMENT).toList())
+                .singleElement()
+                .satisfies(tx -> {
+                    assertThat(tx.getInterestPortion()).isEqualByComparingTo(first.interestAmount());
+                    assertThat(tx.getPenaltyPortion()).isEqualByComparingTo(BigDecimal.ZERO);
+                });
     }
 
     @Test
@@ -244,13 +249,15 @@ class LoanRepaymentServiceTest {
         assertThat(res.totalPaid()).isEqualByComparingTo(first.totalAmount().add(penalty));
         assertThat(accountBalance()).isEqualByComparingTo(balanceBefore.subtract(res.totalPaid()));
 
-        // 원장: 상환 한 건 = 한 줄, 금액 = 계좌 출금액 (연체이자는 이자 부분에 합산)
+        // 원장: 상환 한 건 = 한 줄, 금액 = 계좌 출금액. 약정 이자와 연체이자는 칸을 나눠 적는다
         List<LoanTransaction> repayments = loanTransactionRepository.findAll().stream()
                 .filter(tx -> tx.getType() == LoanTransactionType.REPAYMENT).toList();
         assertThat(repayments).hasSize(1);
-        assertThat(repayments.get(0).getAmount()).isEqualByComparingTo(res.totalPaid());
-        assertThat(repayments.get(0).getInterestPortion())
-                .isEqualByComparingTo(first.interestAmount().add(penalty));
+        LoanTransaction ledger = repayments.get(0);
+        assertThat(ledger.getAmount()).isEqualByComparingTo(res.totalPaid());
+        assertThat(ledger.getPrincipalPortion()).isEqualByComparingTo(first.principalAmount());
+        assertThat(ledger.getInterestPortion()).isEqualByComparingTo(first.interestAmount());
+        assertThat(ledger.getPenaltyPortion()).isEqualByComparingTo(penalty);
 
         // 연체가 정리된다 — 이력이 닫혀 가산이 멈추고, 남은 연체 회차가 없으니 대출은 정상으로
         assertThat(overdueHistoryRepository.findById(history.getId()).orElseThrow().isResolved()).isTrue();

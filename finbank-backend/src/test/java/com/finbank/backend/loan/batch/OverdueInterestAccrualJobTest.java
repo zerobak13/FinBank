@@ -142,7 +142,12 @@ class OverdueInterestAccrualJobTest {
         OverdueHistory result = reload();
         assertThat(result.getPenaltyAccrued()).isEqualByComparingTo(expectedPenalty(10));
         assertThat(result.getLastAccruedAt()).isEqualTo(OVERDUE_START.plusDays(10));
-        assertThat(penaltyLedger()).hasSize(1);
+        // 원장에는 연체이자 부분에만 적는다 (발생). 약정 이자 칸은 비워 둔다
+        assertThat(penaltyLedger()).singleElement().satisfies(tx -> {
+            assertThat(tx.getPenaltyPortion()).isEqualByComparingTo(expectedPenalty(10));
+            assertThat(tx.getInterestPortion()).isEqualByComparingTo(BigDecimal.ZERO);
+            assertThat(tx.getAmount()).isEqualByComparingTo(tx.getPenaltyPortion());
+        });
     }
 
     @Test
