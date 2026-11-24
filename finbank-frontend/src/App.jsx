@@ -9,7 +9,10 @@ import { authApi } from "./api/authApi";
 import { accountApi } from "./api/accountApi";
 import { newIdempotencyKey } from "./api/idempotency";
 import { SESSION_EXPIRED_EVENT, readAuth } from "./api/client";
+import { parseWon } from "./utils/formatter";
 import LoanPage from "./pages/LoanPage";
+
+const AMOUNT_RULE = "금액은 1원 이상, 원 단위 정수로 입력해 주세요.";
 
 export default function App() {
   const [msg, setMsg] = useState("");
@@ -84,42 +87,54 @@ export default function App() {
     } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
   };
 
+  // 입금·출금·이체는 성공하면 true — 실패하면 입력값을 지우지 않아 고쳐서 다시 보낼 수 있다
   const deposit = async (val) => {
-    if (!selected) return;
+    if (!selected) return false;
+    const amount = parseWon(val);
+    if (amount === null) { notify(AMOUNT_RULE, "error"); return false; }
     try {
       setLoading(true);
-      await accountApi.deposit(selected.account.id, val);
+      await accountApi.deposit(selected.account.id, amount);
       notify("입금 완료", "success");
       await refreshAfterTransaction(selected.account.id);
-    } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
+      return true;
+    } catch (e) { notify(e.message, "error"); return false; } finally { setLoading(false); }
   };
 
   const withdraw = async (val) => {
-    if (!selected) return;
+    if (!selected) return false;
+    const amount = parseWon(val);
+    if (amount === null) { notify(AMOUNT_RULE, "error"); return false; }
     try {
       setLoading(true);
-      await accountApi.withdraw(selected.account.id, val);
+      await accountApi.withdraw(selected.account.id, amount);
       notify("출금 완료", "success");
       await refreshAfterTransaction(selected.account.id);
-    } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
+      return true;
+    } catch (e) { notify(e.message, "error"); return false; } finally { setLoading(false); }
   };
 
   const transfer = async (to, amt) => {
-    if (!selected) return;
+    if (!selected) return false;
+    const amount = parseWon(amt);
+    if (amount === null) { notify(AMOUNT_RULE, "error"); return false; }
     try {
       setLoading(true);
       const key = newIdempotencyKey(); // 버튼 1회 = 키 1개
-      await accountApi.transfer({ fromAccountId: selected.account.id, toAccountNumber: to, amount: Number(amt) }, key);
+      await accountApi.transfer({ fromAccountId: selected.account.id, toAccountNumber: to, amount }, key);
       notify("이체 완료", "success");
       await refreshAfterTransaction(selected.account.id);
-    } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
+      return true;
+    } catch (e) { notify(e.message, "error"); return false; } finally { setLoading(false); }
   };
 
   const createAccount = async (e) => {
     e.preventDefault();
+    const amount = parseWon(initialDeposit || "0", { allowZero: true });
+    if (amount === null) return notify("초기 입금액은 0원 이상, 원 단위 정수로 입력해 주세요.", "error");
     try {
       setLoading(true);
-      await accountApi.createAccount(Number(initialDeposit || 0));
+      await accountApi.createAccount(amount);
       setInitialDeposit("");
       notify("계좌 생성 완료", "success");
       await loadAccounts();
@@ -135,7 +150,9 @@ export default function App() {
           handleLogin={handleLogin} handleRegister={handleRegister} handleLogout={handleLogout}
       >
         {menu === "loan" ? (
-            <LoanPage auth={auth} accounts={accounts} loading={loading} setLoading={setLoading} notify={notify}
+            // 사용자가 바뀌면 대출 화면을 새로 그린다 — 앞 사용자가 고른 대출이 남아 있으면 남의 대출을 조회해 403이 난다
+            <LoanPage key={auth?.email ?? "guest"}
+                      auth={auth} accounts={accounts} loading={loading} setLoading={setLoading} notify={notify}
                       onBalanceChanged={refreshSilently} />
         ) : (
         <div className="max-w-6xl mx-auto px-6 py-6 grid grid-cols-12 gap-6">
@@ -153,7 +170,7 @@ export default function App() {
               <h2 className="text-sm font-semibold mb-2">새 계좌 개설</h2>
               {auth ? (
                   <form onSubmit={createAccount}>
-                    <input type="number" step="1000" min="0" value={initialDeposit} onChange={e => setInitialDeposit(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mb-2 text-sm" placeholder="초기 입금액" />
+                    <input type="number" step="1" min="0" value={initialDeposit} onChange={e => setInitialDeposit(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded p-2 mb-2 text-sm" placeholder="초기 입금액" />
                     <button type="submit" disabled={loading} className="w-full bg-emerald-500 py-2 rounded text-sm font-bold">개설하기</button>
                   </form>
               ) : <p className="text-xs text-slate-500">로그인 후 이용 가능합니다.</p>}
