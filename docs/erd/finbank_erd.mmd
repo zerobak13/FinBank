@@ -1,0 +1,176 @@
+---
+title: FinBank ERD — Flyway V1~V7 기준 11개 표
+config:
+  layout: elk
+  theme: base
+  fontFamily: "Noto Sans CJK KR, Apple SD Gothic Neo, Malgun Gothic, sans-serif"
+  themeVariables:
+    fontFamily: "Noto Sans CJK KR, Apple SD Gothic Neo, Malgun Gothic, sans-serif"
+    fontSize: 16px
+    primaryColor: "#f3f5f7"
+    primaryBorderColor: "#7d8894"
+    primaryTextColor: "#1f2328"
+    lineColor: "#56616c"
+    tertiaryColor: "#ffffff"
+    attributeBackgroundColorOdd: "#ffffff"
+    attributeBackgroundColorEven: "#f6f8fa"
+  er:
+    useMaxWidth: false
+---
+%% FinBank ERD — 전체 컬럼 (README의 finbank_erd.png)
+%% 기준: Flyway V1~V7 (finbank-backend/src/main/resources/db/migration)
+%% 표기: 설명에 NULL이 적힌 컬럼만 NULL 허용, 나머지는 NOT NULL
+%%       실선 = FK, 점선 = FK 없는 논리 연결
+%% 그림 만들기: docs/erd/render.sh
+
+erDiagram
+    direction TB
+
+    loan_products["loan_products · 대출 상품"] {
+        bigint id PK
+        varchar(100) name "상품명"
+        varchar(20) repayment_type "EQUAL_PAYMENT / EQUAL_PRINCIPAL / BULLET"
+        decimal(7,6) interest_rate "연이율 (0.059 = 5.9%)"
+        decimal(7,6) overdue_extra_rate "연체 가산율"
+        decimal(7,6) prepayment_fee_rate "중도상환수수료율 (V5)"
+        decimal(19,4) min_amount "최소 대출금"
+        decimal(19,4) max_amount "최대 대출금"
+        int max_term_months "최대 기간 (개월)"
+        varchar(20) status "ON_SALE / CLOSED"
+        datetime(6) created_at
+    }
+
+    members["members · 회원"] {
+        bigint id PK
+        varchar(100) email UK "로그인 ID"
+        varchar(50) name "이름"
+        varchar(200) password "BCrypt 해시"
+        datetime(6) created_at "가입 시각"
+    }
+
+    accounts["accounts · 입출금 계좌"] {
+        bigint id PK
+        varchar(20) account_number UK "계좌번호 12자리"
+        bigint member_id FK "소유 회원"
+        decimal(19,4) balance "잔액 (원)"
+        bit locked "계좌 잠금 (DB 락과 무관)"
+        datetime(6) created_at
+    }
+
+    refresh_tokens["refresh_tokens · 로그인 연장 토큰"] {
+        bigint id PK
+        bigint member_id FK, UK "1인 1토큰"
+        varchar(36) token UK "UUID v4"
+        datetime(6) expires_at "만료 시각 (7일)"
+        datetime(6) created_at
+    }
+
+    transaction_logs["transaction_logs · 입출금 원장"] {
+        bigint id PK
+        varchar(20) type "DEPOSIT / WITHDRAW / TRANSFER_IN / TRANSFER_OUT"
+        bigint from_account_id FK "출금 계좌 (입금이면 NULL)"
+        bigint to_account_id FK "입금 계좌 (출금이면 NULL)"
+        decimal(19,4) amount "거래 금액"
+        decimal(19,4) balance_after "거래 직후 잔액"
+        varchar(255) description "메모 (NULL 가능)"
+        datetime(6) created_at
+    }
+
+    loan_applications["loan_applications · 대출 신청"] {
+        bigint id PK
+        bigint member_id FK "신청자"
+        bigint product_id FK "신청 상품"
+        bigint linked_account_id FK "입금받을 계좌 (V7, 구 데이터는 NULL)"
+        decimal(19,4) requested_amount "신청 금액"
+        int term_months "기간 (개월)"
+        varchar(20) status "APPLIED / APPROVED / REJECTED / EXECUTED / CANCELED"
+        varchar(50) reject_reason "탈락 룰 코드 (NULL 가능)"
+        datetime(6) applied_at "신청 시각"
+        datetime(6) reviewed_at "심사 시각 (NULL 가능)"
+    }
+
+    loan_accounts["loan_accounts · 대출 계약"] {
+        bigint id PK
+        bigint application_id FK, UK "신청 1건당 실행 1건"
+        bigint member_id FK "차주"
+        bigint linked_account_id FK "연결계좌 (실행 입금 · 상환 출금)"
+        decimal(19,4) principal "실행 원금"
+        decimal(19,4) balance "미상환 원금"
+        decimal(7,6) interest_rate "스냅샷 — 실행 시점 금리"
+        decimal(7,6) overdue_extra_rate "스냅샷"
+        decimal(7,6) prepayment_fee_rate "스냅샷 (V5)"
+        varchar(20) repayment_type "스냅샷"
+        date executed_at "실행일"
+        date maturity_date "만기일"
+        varchar(20) status "ACTIVE / OVERDUE / PAID_OFF"
+    }
+
+    loan_transactions["loan_transactions · 대출 원장"] {
+        bigint id PK
+        bigint loan_account_id FK "대출 계약"
+        varchar(20) type "EXECUTION / REPAYMENT / PREPAYMENT / OVERDUE_INTEREST"
+        decimal(19,4) amount "거래 금액"
+        decimal(19,4) principal_portion "원금 부분"
+        decimal(19,4) interest_portion "이자 부분"
+        decimal(19,4) balance_after "거래 직후 미상환 원금"
+        varchar(64) idempotency_key UK "멱등키 (연체이자는 NULL)"
+        datetime(6) created_at
+    }
+
+    repayment_schedules["repayment_schedules · 상환 회차"] {
+        bigint id PK
+        bigint loan_account_id FK "대출 계약"
+        int installment_no UK "회차 — 대출 계약과 묶어 유일"
+        date due_date "납기일"
+        decimal(19,4) principal_amount "원금"
+        decimal(19,4) interest_amount "이자"
+        decimal(19,4) total_amount "납부액"
+        varchar(20) status "PENDING / PAID / OVERDUE / CANCELED"
+        datetime(6) paid_at "납부 시각 (NULL 가능)"
+    }
+
+    overdue_histories["overdue_histories · 연체 이력"] {
+        bigint id PK
+        bigint loan_account_id FK "대출 계약"
+        bigint schedule_id FK "연체된 회차"
+        date overdue_start "연체 시작일 (= 납기일)"
+        date resolved_at "해소일 (NULL이면 연체 중)"
+        decimal(19,4) overdue_amount "연체 원리금"
+        decimal(19,4) penalty_accrued "연체이자 누계"
+        date last_accrued_at "마지막 가산일 (NULL 가능)"
+    }
+
+    idempotency_keys["idempotency_keys · 멱등키"] {
+        bigint id PK
+        varchar(64) idem_key UK "Idempotency-Key 헤더 값"
+        bigint member_id FK "요청자"
+        varchar(64) request_hash "요청 내용 SHA-256 (다르면 422)"
+        varchar(20) status "IN_PROGRESS / COMPLETED"
+        varchar(4000) response_body "응답 스냅샷 JSON (NULL 가능)"
+        datetime(6) created_at
+        datetime(6) completed_at "확정 시각 (NULL 가능)"
+    }
+
+    loan_products ||--o{ loan_applications : "상품"
+    members ||--o{ loan_applications : "신청"
+    accounts |o--o{ loan_applications : "입금받을 계좌"
+    members ||--o{ accounts : "보유"
+    members ||--o| refresh_tokens : "로그인 연장"
+    accounts |o--o{ transaction_logs : "출금 (from)"
+    accounts |o--o{ transaction_logs : "입금 (to)"
+    loan_applications ||--o| loan_accounts : "실행 (최대 1번)"
+    members ||--o{ loan_accounts : "차주"
+    accounts ||--o{ loan_accounts : "연결계좌"
+    loan_accounts ||--|{ loan_transactions : "거래"
+    loan_accounts ||--|{ repayment_schedules : "회차 (실행 때 전부 생성)"
+    loan_accounts ||--o{ overdue_histories : "연체"
+    repayment_schedules ||--o{ overdue_histories : "연체된 회차"
+    members ||--o{ idempotency_keys : "요청"
+    loan_transactions |o..o| idempotency_keys : "같은 키 값 (FK 없음)"
+
+    classDef deposit fill:#e6effa,stroke:#3d6fb0,stroke-width:2px
+    classDef loan fill:#e4f3e8,stroke:#3b8a55,stroke-width:2px
+    classDef common fill:#fbf0da,stroke:#b07d1e,stroke-width:2px
+    class members,accounts,refresh_tokens,transaction_logs deposit
+    class loan_products,loan_applications,loan_accounts,loan_transactions,repayment_schedules,overdue_histories loan
+    class idempotency_keys common

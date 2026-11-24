@@ -1,0 +1,114 @@
+---
+title: FinBank ERD — 키만 남긴 관계도 (Flyway V1~V7)
+config:
+  layout: elk
+  theme: base
+  fontFamily: "Noto Sans CJK KR, Apple SD Gothic Neo, Malgun Gothic, sans-serif"
+  themeVariables:
+    fontFamily: "Noto Sans CJK KR, Apple SD Gothic Neo, Malgun Gothic, sans-serif"
+    fontSize: 16px
+    primaryColor: "#f3f5f7"
+    primaryBorderColor: "#7d8894"
+    primaryTextColor: "#1f2328"
+    lineColor: "#56616c"
+    tertiaryColor: "#ffffff"
+    attributeBackgroundColorOdd: "#ffffff"
+    attributeBackgroundColorEven: "#f6f8fa"
+  er:
+    useMaxWidth: false
+---
+%% FinBank ERD — 키만 남긴 관계도 (가이드 3-3의 그림)
+%% finbank_erd.mmd에서 PK·FK·UK 컬럼만 남긴 것 — 스키마가 바뀌면 두 파일을 같이 고친다
+%% 그림 만들기: docs/erd/render.sh
+
+erDiagram
+    direction TB
+
+    loan_products["loan_products · 대출 상품"] {
+        bigint id PK
+    }
+
+    members["members · 회원"] {
+        bigint id PK
+        varchar(100) email UK
+    }
+
+    accounts["accounts · 입출금 계좌"] {
+        bigint id PK
+        varchar(20) account_number UK
+        bigint member_id FK
+    }
+
+    refresh_tokens["refresh_tokens · 로그인 연장 토큰"] {
+        bigint id PK
+        bigint member_id FK, UK
+        varchar(36) token UK
+    }
+
+    transaction_logs["transaction_logs · 입출금 원장"] {
+        bigint id PK
+        bigint from_account_id FK
+        bigint to_account_id FK
+    }
+
+    loan_applications["loan_applications · 대출 신청"] {
+        bigint id PK
+        bigint member_id FK
+        bigint product_id FK
+        bigint linked_account_id FK
+    }
+
+    loan_accounts["loan_accounts · 대출 계약"] {
+        bigint id PK
+        bigint application_id FK, UK
+        bigint member_id FK
+        bigint linked_account_id FK
+    }
+
+    loan_transactions["loan_transactions · 대출 원장"] {
+        bigint id PK
+        bigint loan_account_id FK
+        varchar(64) idempotency_key UK
+    }
+
+    repayment_schedules["repayment_schedules · 상환 회차"] {
+        bigint id PK
+        bigint loan_account_id FK
+        int installment_no UK
+    }
+
+    overdue_histories["overdue_histories · 연체 이력"] {
+        bigint id PK
+        bigint loan_account_id FK
+        bigint schedule_id FK
+    }
+
+    idempotency_keys["idempotency_keys · 멱등키"] {
+        bigint id PK
+        varchar(64) idem_key UK
+        bigint member_id FK
+    }
+
+    loan_products ||--o{ loan_applications : "상품"
+    members ||--o{ loan_applications : "신청"
+    accounts |o--o{ loan_applications : "입금받을 계좌"
+    members ||--o{ accounts : "보유"
+    members ||--o| refresh_tokens : "로그인 연장"
+    accounts |o--o{ transaction_logs : "출금 (from)"
+    accounts |o--o{ transaction_logs : "입금 (to)"
+    loan_applications ||--o| loan_accounts : "실행 (최대 1번)"
+    members ||--o{ loan_accounts : "차주"
+    accounts ||--o{ loan_accounts : "연결계좌"
+    loan_accounts ||--|{ loan_transactions : "거래"
+    loan_accounts ||--|{ repayment_schedules : "회차 (실행 때 전부 생성)"
+    loan_accounts ||--o{ overdue_histories : "연체"
+    repayment_schedules ||--o{ overdue_histories : "연체된 회차"
+    members ||--o{ idempotency_keys : "요청"
+    loan_transactions |o..o| idempotency_keys : "같은 키 값 (FK 없음)"
+
+    classDef deposit fill:#e6effa,stroke:#3d6fb0,stroke-width:2px
+    classDef loan fill:#e4f3e8,stroke:#3b8a55,stroke-width:2px
+    classDef common fill:#fbf0da,stroke:#b07d1e,stroke-width:2px
+    class members,accounts,refresh_tokens,transaction_logs deposit
+    class loan_products,loan_applications,loan_accounts,loan_transactions,repayment_schedules,overdue_histories loan
+    class idempotency_keys common
