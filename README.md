@@ -69,7 +69,7 @@ npm test                                            # 화면 테스트 20개 (No
 
 | 구분 | 사용 |
 |---|---|
-| 백엔드 | Java 17, Spring Boot 3.3, Spring Security + JWT, Spring Data JPA, QueryDSL, Spring Batch, Flyway |
+| 백엔드 | Java 17, Spring Boot 3.5, Spring Security + JWT, Spring Data JPA, QueryDSL, Spring Batch, Flyway |
 | DB | MySQL 8 — 금액은 `DECIMAL(19,4)`, 스키마는 마이그레이션 V1~V8 |
 | 프론트엔드 | React, Vite, Tailwind CSS |
 | 실행·검증 | Docker Compose, GitHub Actions (MySQL 컨테이너 CI + 판정 기준 가드) |
