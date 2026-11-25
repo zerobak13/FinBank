@@ -10,7 +10,7 @@ import { idempotentPost, newIdempotencyKey } from "./idempotency";
 export { newIdempotencyKey };
 
 export const loanApi = {
-    // ── 상품 · 신청 (C1) ───────────────────────────────
+    // ── 상품 · 신청 ─────────────────────────────────────
     getProducts: () => client("/api/loans/products"),
     apply: (payload) =>
         client("/api/loans/applications", {
@@ -18,10 +18,8 @@ export const loanApi = {
             body: JSON.stringify(payload), // { productId, accountId, requestedAmount, termMonths }
         }),
     getMyApplications: () => client("/api/loans/applications"),
-    cancelApplication: (id) =>
-        client(`/api/loans/applications/${id}`, { method: "DELETE" }),
 
-    // ── 실행 · 상환 (C3) ───────────────────────────────
+    // ── 실행 · 상환 ─────────────────────────────────────
     /** 대출 실행 — 신청할 때 지정한 계좌로 입금된다 */
     execute: (applicationId, key) =>
         idempotentPost(`/api/loans/applications/${applicationId}/execute`, { key }),
@@ -36,9 +34,17 @@ export const loanApi = {
 
     // ── 조회 ─────────────────────────────────────────
     getMyLoans: () => client("/api/loans"),
-    getLoan: (loanId) => client(`/api/loans/${loanId}`),
+    /** 회차별 스케줄 — 연체 회차는 쌓인 연체이자(penaltyAccrued)도 함께 온다 */
     getSchedules: (loanId) => client(`/api/loans/${loanId}/schedules`),
 };
+
+/** 자동심사 탈락 사유 코드 → 사용자 문구 (신청 직후 알림과 신청 이력이 같이 쓴다) */
+export const REJECT_REASON = {
+    CREDIT_LIMIT_EXCEEDED: "기존 대출 잔액과 승인된 신청 금액을 더하면 상품 한도를 넘습니다",
+    ACTIVE_OVERDUE_EXISTS: "진행 중인 연체 대출이 있습니다",
+};
+
+export const rejectReasonText = (code) => REJECT_REASON[code] ?? code ?? "사유 미상";
 
 /**
  * 서버 에러 코드 → 사용자 문구 (서버 메시지가 기술적일 때 대체할 기본값).

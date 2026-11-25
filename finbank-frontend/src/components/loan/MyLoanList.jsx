@@ -1,4 +1,5 @@
 import React from "react";
+import { rejectReasonText } from "../../api/loanApi";
 
 const won = (v) => Number(v ?? 0).toLocaleString("ko-KR");
 
@@ -10,13 +11,9 @@ const STATUS_BADGE = {
     CANCELED: "bg-slate-500/20 text-slate-300 border-slate-500/40",
 };
 
+// 서버의 ApplicationStatus.label()과 같은 문구 — 서버 오류 메시지("현재 상태(심사 탈락)에서는…")와 맞춘다
 const STATUS_LABEL = {
-    APPLIED: "심사중", APPROVED: "승인", REJECTED: "거절", EXECUTED: "실행됨", CANCELED: "취소",
-};
-
-const REJECT_REASON = {
-    CREDIT_LIMIT_EXCEEDED: "기존 대출 잔액 합산이 상품 한도를 넘습니다",
-    ACTIVE_OVERDUE_EXISTS: "진행 중인 연체 대출이 있습니다",
+    APPLIED: "심사 중", APPROVED: "승인", REJECTED: "심사 탈락", EXECUTED: "실행됨", CANCELED: "취소",
 };
 
 /**
@@ -59,7 +56,7 @@ export default function MyLoanList({ applications, apiReady, busy, onExecute }) 
 
                     {a.status === "REJECTED" && a.rejectReason && (
                         <div className="text-[11px] text-red-400/80 mt-1">
-                            탈락 사유: {REJECT_REASON[a.rejectReason] ?? a.rejectReason}
+                            탈락 사유: {rejectReasonText(a.rejectReason)}
                         </div>
                     )}
 

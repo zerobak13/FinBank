@@ -21,6 +21,7 @@ const SCHEDULE_STATUS = {
  *
  * 스케줄은 실행 시점에 전 회차가 확정 저장된 값을 그대로 보여준다(서버가 매번 계산하지 않는다).
  * 상환은 "가장 빠른 미납 회차"만 가능하므로, 다음 회차 한 줄만 강조하고 나머지는 열람용이다.
+ * 연체 회차는 쌓인 연체이자까지 한 번에 출금되므로, 버튼 금액도 납부액 + 연체이자다(서버가 실제로 빼 가는 금액).
  */
 export default function LoanRepaymentPanel({
     loans, selectedLoanId, onSelectLoan, schedules, busy, onRepay, onPrepay,
@@ -39,6 +40,8 @@ export default function LoanRepaymentPanel({
     const loan = loans.find((l) => l.loanId === selectedLoanId) ?? loans[0];
     const status = LOAN_STATUS[loan.status] ?? { label: loan.status, cls: "" };
     const nextDue = schedules?.find((s) => s.status === "PENDING" || s.status === "OVERDUE");
+    const nextPenalty = Number(nextDue?.penaltyAccrued ?? 0);
+    const nextCharge = Number(nextDue?.totalAmount ?? 0) + nextPenalty;
     const paidOff = loan.status === "PAID_OFF";
 
     return (
@@ -90,7 +93,8 @@ export default function LoanRepaymentPanel({
                     className="px-3 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                     {nextDue
-                        ? `${nextDue.installmentNo}회차 상환 (${won(nextDue.totalAmount)}원)`
+                        ? `${nextDue.installmentNo}회차 상환 (${won(nextCharge)}원` +
+                          `${nextPenalty > 0 ? `, 연체이자 ${won(nextPenalty)}원 포함` : ""})`
                         : "상환할 회차 없음"}
                 </button>
                 <button
@@ -135,7 +139,12 @@ export default function LoanRepaymentPanel({
                                     <td className="py-1.5 text-slate-400">{s.dueDate}</td>
                                     <td className="py-1.5 text-right">{won(s.principalAmount)}</td>
                                     <td className="py-1.5 text-right text-slate-400">{won(s.interestAmount)}</td>
-                                    <td className="py-1.5 text-right">{won(s.totalAmount)}</td>
+                                    <td className="py-1.5 text-right">
+                                        {won(s.totalAmount)}
+                                        {Number(s.penaltyAccrued ?? 0) > 0 && (
+                                            <div className="text-[10px] text-red-400">+ 연체이자 {won(s.penaltyAccrued)}</div>
+                                        )}
+                                    </td>
                                     <td className={`py-1.5 text-right ${st.cls}`}>{st.label}</td>
                                 </tr>
                             );

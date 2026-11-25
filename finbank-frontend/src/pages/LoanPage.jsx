@@ -3,7 +3,7 @@ import LoanProductList from "../components/loan/LoanProductList";
 import LoanApplyForm from "../components/loan/LoanApplyForm";
 import MyLoanList from "../components/loan/MyLoanList";
 import LoanRepaymentPanel from "../components/loan/LoanRepaymentPanel";
-import { loanApi, newIdempotencyKey, LOAN_ERROR_MESSAGE } from "../api/loanApi";
+import { loanApi, newIdempotencyKey, LOAN_ERROR_MESSAGE, rejectReasonText } from "../api/loanApi";
 
 /**
  * 대출 메뉴 페이지 — 신청 → 실행 → 상환의 전 흐름.
@@ -91,7 +91,7 @@ export default function LoanPage({ auth, accounts = [], loading, setLoading, not
             if (result.status === "APPROVED") {
                 notify("심사 통과! 승인되었습니다. 실행 버튼으로 대출금을 받으세요.", "success");
             } else {
-                notify(`심사 탈락: ${result.rejectReason ?? "사유 미상"}`, "error");
+                notify(`심사 탈락: ${rejectReasonText(result.rejectReason)}`, "error");
             }
             await loadApplications();
         } catch (e) {
