@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.Optional;
 
 /**
  * JWT Access Token의 발급과 검증을 담당한다.
@@ -40,16 +41,12 @@ public class JwtTokenProvider {
                 .compact();
     }
 
-    public String getEmail(String token) {
-        return parseClaims(token).getBody().getSubject();
-    }
-
-    public boolean validateToken(String token) {
+    /** 서명·만료가 유효하면 토큰의 이메일(subject), 아니면 빈 값 — 요청마다 한 번만 파싱한다 */
+    public Optional<String> findEmail(String token) {
         try {
-            parseClaims(token);
-            return true;
+            return Optional.ofNullable(parseClaims(token).getBody().getSubject());
         } catch (JwtException | IllegalArgumentException e) {
-            return false;
+            return Optional.empty();
         }
     }
 

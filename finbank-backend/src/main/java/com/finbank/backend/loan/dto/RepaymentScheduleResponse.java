@@ -25,11 +25,6 @@ public record RepaymentScheduleResponse(
         String status,
         LocalDateTime paidAt
 ) {
-    /** 연체이자가 없는 회차 (대출 실행 직후 등) */
-    public static RepaymentScheduleResponse from(RepaymentSchedule s) {
-        return from(s, BigDecimal.ZERO);
-    }
-
     public static RepaymentScheduleResponse from(RepaymentSchedule s, BigDecimal penaltyAccrued) {
         return new RepaymentScheduleResponse(
                 s.getId(),

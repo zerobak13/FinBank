@@ -43,8 +43,9 @@ import java.util.Optional;
  * (엔티티를 먼저 읽으면 1차 캐시 때문에 뒤이은 락 조회가 낡은 값을 돌려준다 — 계좌 동시성 테스트에서 확인한 함정).
  * 락보다 먼저 하는 일은 소유자 확인이다 — 남의 대출 번호로 온 요청이 그 사람의 계좌·대출을 잠그지 못하게.</p>
  *
- * <p><b>연체 배치와 겹칠 때</b>: 연체 이력과 남은 연체 회차는 잠금 조회로 읽는다. 일반 조회는 트랜잭션
- * 첫 조회 시점의 스냅샷이라, 그 뒤에 배치가 가산한 연체이자나 연체로 바꾼 회차를 못 볼 수 있다.</p>
+ * <p><b>다른 작업과 겹칠 때</b>: 락을 기다린 뒤에 읽는 값은 잠금 조회로 읽는다 — 연체 이력, 남은 연체 회차,
+ * 중도상환의 마지막 납부 회차. 일반 조회는 트랜잭션 첫 조회(소유자 확인) 시점의 스냅샷이라, 기다리는 사이
+ * 배치가 가산한 연체이자·연체로 바꾼 회차나 같은 대출의 다른 상환이 끝낸 회차를 못 볼 수 있다.</p>
  *
  * <p><b>이중 상환 방어의 핵심은 조건부 UPDATE다.</b> MySQL 기본 격리수준(REPEATABLE READ)에서
  * 일반 SELECT는 트랜잭션 시작 시점의 스냅샷을 읽는다. 락을 기다렸다 통과한 두 번째 요청이
@@ -267,10 +268,10 @@ public class LoanRepaymentProcessor {
         }
     }
 
-    /** 경과이자 기산일 = 직전 납부 회차의 납기일, 없으면 실행일 */
+    /** 경과이자 기산일 = 직전 납부 회차의 납기일, 없으면 실행일 (납부 회차는 잠금 조회 — 방금 끝난 상환까지 본다) */
     private long elapsedDaysSinceLastPayment(LoanAccount loan, LocalDate today) {
-        LocalDate base = repaymentScheduleRepository
-                .findFirstByLoanAccountAndStatusOrderByInstallmentNoDesc(loan, ScheduleStatus.PAID)
+        LocalDate base = repaymentScheduleRepository.lockLastPaidScheduleId(loan.getId())
+                .flatMap(repaymentScheduleRepository::findById)
                 .map(RepaymentSchedule::getDueDate)
                 .orElse(loan.getExecutedAt());
         return Math.max(0, ChronoUnit.DAYS.between(base, today));

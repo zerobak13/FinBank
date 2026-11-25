@@ -1,6 +1,5 @@
 package com.finbank.backend.auth.security;
 
-import com.finbank.backend.auth.security.JwtTokenProvider;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,20 +43,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // JWT는 서명으로 자체 검증되므로 인증 단계에서 회원 존재 여부를 DB로 확인하지 않는다.
         // (요청마다 발생하던 findByEmail 제거) 실제 회원 엔티티가 필요한 지점(CurrentMemberProvider)에서만 조회한다.
         String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
-            String token = header.substring(7);
-            if (jwtTokenProvider.validateToken(token)
-                    && SecurityContextHolder.getContext().getAuthentication() == null) {
-
-                String email = jwtTokenProvider.getEmail(token);
-
+        if (header != null && header.startsWith("Bearer ")
+                && SecurityContextHolder.getContext().getAuthentication() == null) {
+            jwtTokenProvider.findEmail(header.substring(7)).ifPresent(email -> {
                 UsernamePasswordAuthenticationToken auth =
-                        new UsernamePasswordAuthenticationToken(
-                                email, null, Collections.emptyList());
-                auth.setDetails(
-                        new WebAuthenticationDetailsSource().buildDetails(request));
+                        new UsernamePasswordAuthenticationToken(email, null, Collections.emptyList());
+                auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(auth);
-            }
+            });
         }
 
         filterChain.doFilter(request, response);

@@ -84,9 +84,22 @@ public interface RepaymentScheduleRepository extends JpaRepository<RepaymentSche
                                                   @Param("lastId") Long lastId,
                                                   Pageable pageable);
 
-    /** 가장 마지막으로 납부 완료된 회차 — 중도상환 경과이자의 기산일 계산에 사용 */
-    Optional<RepaymentSchedule> findFirstByLoanAccountAndStatusOrderByInstallmentNoDesc(
-            LoanAccount loanAccount, ScheduleStatus status);
+    /**
+     * 가장 마지막으로 납부 완료된 회차의 ID — <b>공유 잠금 조회</b>(최신 커밋본). 중도상환 경과이자의 기산일 계산에 쓴다.
+     *
+     * <p>일반 조회는 트랜잭션 첫 조회 시점의 스냅샷이다. 중도상환이 계좌 락을 기다리는 사이 같은 대출의 회차 상환이
+     * 끝나면, 일반 조회로는 그 상환을 못 봐서 기산일이 한 회차 앞으로 당겨지고 이자를 더 받는다.
+     * 아래 {@link #lockOverdueScheduleIds}와 같은 이유로 (대출, 회차) 유니크 인덱스를 고정한다.</p>
+     */
+    @Query(value = """
+            select s.id from repayment_schedules s force index (uq_schedule_installment)
+             where s.loan_account_id = :loanAccountId
+               and s.status = 'PAID'
+             order by s.installment_no desc
+             limit 1
+               for share
+            """, nativeQuery = true)
+    Optional<Long> lockLastPaidScheduleId(@Param("loanAccountId") Long loanAccountId);
 
     /**
      * 남은 연체 회차 ID — <b>잠금 조회</b>(최신 커밋본). 상환 뒤 연체 해소 판정에 쓴다.

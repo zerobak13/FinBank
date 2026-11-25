@@ -2,7 +2,7 @@ package com.finbank.backend.loan.service;
 
 import com.finbank.backend.account.domain.Account;
 import com.finbank.backend.account.repository.AccountRepository;
-import com.finbank.backend.account.service.AccountService;
+import com.finbank.backend.account.service.AccountMoneyService;
 import com.finbank.backend.exception.BusinessException;
 import com.finbank.backend.exception.ErrorCode;
 import com.finbank.backend.loan.domain.LoanAccount;
@@ -61,7 +61,7 @@ class LoanRepaymentServiceTest {
     @Autowired LoanExecutionService loanExecutionService;
     @Autowired LoanRepaymentService loanRepaymentService;
     @Autowired LoanQueryService loanQueryService;
-    @Autowired AccountService accountService;
+    @Autowired AccountMoneyService accountMoneyService;
     @Autowired LoanAccountRepository loanAccountRepository;
     @Autowired LoanTransactionRepository loanTransactionRepository;
     @Autowired OverdueFixture overdueFixture;
@@ -130,7 +130,7 @@ class LoanRepaymentServiceTest {
     @Test
     @DisplayName("1회차 상환: 계좌에서 회차 총액이 빠지고 대출 잔액이 회차 원금만큼 줄어든다")
     void repay_firstInstallment() {
-        RepaymentScheduleResponse first = loan.schedules().get(0);
+        RepaymentScheduleResponse first = loanQueryService.getSchedules(loan.loanId()).get(0);
         BigDecimal balanceBefore = accountBalance();
 
         RepaymentResponse res = loanRepaymentService.repay(loan.loanId(), 1, newKey());
@@ -218,7 +218,7 @@ class LoanRepaymentServiceTest {
     void repay_insufficientBalance() {
         // 회차 총액보다 적게 남도록 계좌를 비운다
         BigDecimal keep = new BigDecimal("1000");
-        accountService.withdraw(account.getId(), accountBalance().subtract(keep));
+        accountMoneyService.withdraw(account.getId(), accountBalance().subtract(keep), newKey());
 
         assertThatThrownBy(() -> loanRepaymentService.repay(loan.loanId(), 1, newKey()))
                 .isInstanceOf(BusinessException.class)
@@ -235,7 +235,7 @@ class LoanRepaymentServiceTest {
     void repay_overdueInstallment_collectsPenalty() {
         BigDecimal penalty = new BigDecimal("12345");
         OverdueHistory history = overdueFirstInstallment(penalty);
-        RepaymentScheduleResponse first = loan.schedules().get(0);
+        RepaymentScheduleResponse first = loanQueryService.getSchedules(loan.loanId()).get(0);
         BigDecimal balanceBefore = accountBalance();
 
         RepaymentResponse res = loanRepaymentService.repay(loan.loanId(), 1, newKey());
@@ -289,11 +289,11 @@ class LoanRepaymentServiceTest {
     void repay_overdueInstallment_insufficientForPenalty_rejectsAll() {
         BigDecimal penalty = new BigDecimal("12345");
         OverdueHistory history = overdueFirstInstallment(penalty);
-        RepaymentScheduleResponse first = loan.schedules().get(0);
+        RepaymentScheduleResponse first = loanQueryService.getSchedules(loan.loanId()).get(0);
         BigDecimal needed = first.totalAmount().add(penalty);
 
         // 원리금만큼만 남긴다 — 연체이자만큼 모자란 잔액
-        accountService.withdraw(account.getId(), accountBalance().subtract(first.totalAmount()));
+        accountMoneyService.withdraw(account.getId(), accountBalance().subtract(first.totalAmount()), newKey());
 
         assertThatThrownBy(() -> loanRepaymentService.repay(loan.loanId(), 1, newKey()))
                 .isInstanceOf(BusinessException.class)

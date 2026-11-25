@@ -36,6 +36,9 @@ import java.util.stream.Collectors;
  * 동시성 제어와 잔액 무결성을 책임진다. 잔액이 변경되는 모든 연산은
  * {@code @Transactional} 범위 안에서 비관적 락(PESSIMISTIC_WRITE)으로 보호되고,
  * 락 조회를 각 계좌의 "첫 조회"로 수행해 1차 캐시로 인한 stale read를 방지한다.</p>
+ *
+ * <p><b>돈이 움직이는 메서드(입금·출금·이체)는 패키지 밖에 공개하지 않는다.</b> 공개 진입점은 멱등 처리를 감싼
+ * {@link AccountMoneyService} 하나다. (스프링 6부터 클래스 기반 프록시는 package-private 메서드에도 트랜잭션을 건다)</p>
  */
 @Service
 public class AccountService {
@@ -123,8 +126,18 @@ public class AccountService {
     }
 
 
+    /** 입금 본체 (멱등 확정 없음) — 같은 패키지의 테스트용. 운영 경로는 {@link AccountMoneyService#deposit} */
     @Transactional
-    public void deposit(Long accountId, BigDecimal amount) {
+    CashResponse deposit(Long accountId, BigDecimal amount) {
+        return deposit(accountId, amount, null);
+    }
+
+    /**
+     * 입금의 트랜잭션 본체 — {@link AccountMoneyService}가 멱등키를 선점한 뒤 호출한다.
+     * 응답 확정({@code complete})도 입금과 같은 트랜잭션에서 한다 (이체·상환과 같은 원칙).
+     */
+    @Transactional
+    CashResponse deposit(Long accountId, BigDecimal amount, String idempotencyKey) {
         validateAmount(amount, "입금");
 
         Member member = currentMemberProvider.current();
@@ -146,11 +159,20 @@ public class AccountService {
         transactionLogRepository.save(
                 TransactionLog.deposit(account, amount, account.getBalance())
         );
+
+        return complete(idempotencyKey, cashResponse(account, amount, "입금 완료"));
     }
 
 
+    /** 출금 본체 (멱등 확정 없음) — 같은 패키지의 테스트용. 운영 경로는 {@link AccountMoneyService#withdraw} */
     @Transactional
-    public void withdraw(Long accountId, BigDecimal amount) {
+    CashResponse withdraw(Long accountId, BigDecimal amount) {
+        return withdraw(accountId, amount, null);
+    }
+
+    /** 출금의 트랜잭션 본체 — 입금과 같다 ({@link AccountMoneyService}가 키를 선점한 뒤 호출) */
+    @Transactional
+    CashResponse withdraw(Long accountId, BigDecimal amount, String idempotencyKey) {
         validateAmount(amount, "출금");
 
         Member member = currentMemberProvider.current();
@@ -176,6 +198,8 @@ public class AccountService {
         transactionLogRepository.save(
                 TransactionLog.withdraw(account, amount, account.getBalance())
         );
+
+        return complete(idempotencyKey, cashResponse(account, amount, "출금 완료"));
     }
 
     /**
@@ -196,23 +220,25 @@ public class AccountService {
      * <p><b>권한 확인은 락보다 먼저.</b> 출금 계좌의 소유자를 프로젝션으로 확인한 뒤에만 락을 건다.
      * 소유자는 바뀌지 않는 값이라 락 없이 읽어도 안전하고, 남의 계좌 ID를 넣은 요청이
      * 그 계좌(와 받는 계좌)에 락을 걸어 정상 거래를 붙잡아두는 일을 막는다.</p>
+     *
+     * <p>이 오버로드는 멱등 확정 없이 이체만 한다 — 같은 패키지의 테스트용. 운영 경로는 {@link AccountMoneyService#transfer}.</p>
      */
     @Transactional
-    public TransferResponse transfer(TransferRequest request) {
+    TransferResponse transfer(TransferRequest request) {
         return transfer(request, null);
     }
 
     /**
-     * 멱등 이체의 트랜잭션 본체 — {@link AccountTransferService}가 키를 선점한 뒤 호출한다.
+     * 멱등 이체의 트랜잭션 본체 — {@link AccountMoneyService}가 키를 선점한 뒤 호출한다.
      *
      * <p>응답 스냅샷 확정({@code complete})을 이체와 <b>같은 트랜잭션</b>에서 수행한다.
      * "돈이 움직인 사실"과 "COMPLETED 기록"이 한 커밋에 묶여야, 커밋 직후 장애가 나도
      * 재시도가 이체를 한 번 더 실행하지 않는다(상환과 동일한 원칙).</p>
      *
-     * @param idempotencyKey null이면 멱등 처리 없이 이체만 수행한다(내부·테스트용)
+     * @param idempotencyKey null이면 멱등 확정 없이 이체만 한다 — 같은 패키지의 테스트용
      */
     @Transactional
-    public TransferResponse transfer(TransferRequest request, String idempotencyKey) {
+    TransferResponse transfer(TransferRequest request, String idempotencyKey) {
         Member member = currentMemberProvider.current();
 
         validateAmount(request.getAmount(), "이체");
@@ -274,10 +300,7 @@ public class AccountService {
                 MoneyPolicy.toWon(from.getBalance()),
                 "이체 완료");
 
-        if (idempotencyKey != null) {
-            idempotentExecutor.complete(idempotencyKey, response);
-        }
-        return response;
+        return complete(idempotencyKey, response);
     }
 
     /** 금액 상한 — 이체·계좌 개설 요청의 {@code @Digits(integer = 15)}와 같다 */
@@ -285,8 +308,8 @@ public class AccountService {
 
     /**
      * 금액 규칙: 0보다 큰 원 단위 정수, 상한 이하.
-     * 이체·계좌 개설은 요청 DTO가 같은 규칙을 검사하지만, 입금·출금은 쿼리 파라미터로 받아서 여기서 막는다
-     * (0.5원이 들어오면 잔액에 화면에 안 보이는 소수가 남는다).
+     * 요청 DTO(이체·입출금·계좌 개설)도 같은 규칙을 검사하지만, 본체가 한 번 더 막는다 — 다른 경로로 들어온 값도
+     * 0.5원 같은 소수를 남기지 않게(잔액에 화면에 안 보이는 소수가 남는다).
      */
     private static void validateAmount(BigDecimal amount, String action) {
         // BigDecimal 비교는 부호 검사(signum)로 — compareTo(ZERO)와 동일하지만 의도가 명확하다.
@@ -319,6 +342,19 @@ public class AccountService {
                 .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다: " + accountId));
     }
 
+
+    /** 응답 스냅샷 확정 — 키가 있을 때만(운영 경로). 돈의 이동과 같은 트랜잭션 안이다 */
+    private <T> T complete(String idempotencyKey, T response) {
+        if (idempotencyKey != null) {
+            idempotentExecutor.complete(idempotencyKey, response);
+        }
+        return response;
+    }
+
+    private static CashResponse cashResponse(Account account, BigDecimal amount, String message) {
+        return new CashResponse(account.getId(), MoneyPolicy.toWon(amount),
+                MoneyPolicy.toWon(account.getBalance()), message);
+    }
 
     private AccountSummaryResponse toSummary(Account a) {
         // 응답은 원 단위 정수로 스케일 정리 (DB의 DECIMAL(19,4)가 1000.0000으로 내려와도 JSON은 1000)
@@ -373,9 +409,4 @@ public class AccountService {
         }
         return sb.toString();
     }
-
-
-
-
-
 }

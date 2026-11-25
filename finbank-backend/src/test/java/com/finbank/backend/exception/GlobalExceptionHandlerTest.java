@@ -3,6 +3,7 @@ package com.finbank.backend.exception;
 import com.finbank.backend.exception.ApiError;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +13,8 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+import java.sql.SQLException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -75,6 +78,20 @@ class GlobalExceptionHandlerTest {
                 new MissingServletRequestParameterException("amount", "BigDecimal"));
         assertThat(missing.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(missing.getBody().getMessage()).isEqualTo("amount 값이 필요합니다.");
+    }
+
+    @Test
+    @DisplayName("DB 제약 위반: UNIQUE 위반(1062)만 409 중복 요청, 길이 초과 등은 '중복'으로 가리지 않고 500")
+    void dataIntegrity_onlyDuplicateKeyIsConflict() {
+        ResponseEntity<ApiError> duplicate = handler.handleDataIntegrity(new DataIntegrityViolationException("dup",
+                new SQLException("Duplicate entry 'k' for key 'uq_idem_key'", "23000", 1062)));
+        assertThat(duplicate.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(duplicate.getBody().getCode()).isEqualTo("DUPLICATE_REQUEST");
+
+        ResponseEntity<ApiError> tooLong = handler.handleDataIntegrity(new DataIntegrityViolationException("too long",
+                new SQLException("Data too long for column 'response_body'", "22001", 1406)));
+        assertThat(tooLong.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(tooLong.getBody().getCode()).isEqualTo("INTERNAL_ERROR");
     }
 
     @Test

@@ -1,9 +1,9 @@
 package com.finbank.backend.exception;
 
-import com.finbank.backend.exception.ApiError;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +15,8 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+
+import java.sql.SQLException;
 
 /**
  * 전역 예외 처리기. 서비스에서 던진 예외를 일관된 ApiError 응답과 알맞은 HTTP 상태로 바꾼다.
@@ -63,17 +65,39 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * UNIQUE 제약 위반 등 — 멱등키·이중 실행의 <b>DB 레벨 최종 방어선</b>이 작동한 경우.
-     * 서비스 계층 방어를 뚫고 여기까지 왔다는 뜻이므로 500이 아니라 409(충돌)로 알린다.
+     * DB 제약 위반.
+     *
+     * <ul>
+     *   <li>UNIQUE 위반(MySQL 1062) — 멱등키·이중 실행의 <b>DB 레벨 최종 방어선</b>이 작동한 경우. 409(충돌)로 알린다.</li>
+     *   <li>그 밖(길이 초과·FK 위반 등) — 입력 검증을 통과했는데 DB가 거절했다면 서버 쪽 결함이다.
+     *       예전처럼 전부 "중복된 요청"으로 답하면 원인이 가려진다(실행 응답이 칸을 넘던 버그도 그렇게 보였다). 500으로 남긴다.</li>
+     * </ul>
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleDataIntegrity(DataIntegrityViolationException ex) {
-        log.warn("무결성 제약 위반 (중복 요청으로 추정)", ex);
-        ApiError error = new ApiError("중복된 요청입니다.", "DUPLICATE_REQUEST");
-        return new ResponseEntity<>(error, HttpStatus.CONFLICT);
+        if (isDuplicateKey(ex)) {
+            log.warn("UNIQUE 제약 위반 (중복 요청으로 추정)", ex);
+            return new ResponseEntity<>(new ApiError("중복된 요청입니다.", "DUPLICATE_REQUEST"), HttpStatus.CONFLICT);
+        }
+        log.error("DB 제약 위반", ex);
+        return new ResponseEntity<>(new ApiError("Internal server error", "INTERNAL_ERROR"), HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    /** 필수 쿼리 파라미터 누락 — 입금 금액을 비워 보낸 경우({@code ?amount=})도 여기로 온다 */
+    /** MySQL 1062(Duplicate entry)만 중복으로 본다 — 원인 사슬을 따라가며 확인 */
+    private static boolean isDuplicateKey(Throwable ex) {
+        if (ex instanceof DuplicateKeyException) {
+            return true;
+        }
+        Throwable t = ex;
+        for (int depth = 0; t != null && depth < 10; depth++, t = t.getCause()) {
+            if (t instanceof SQLException sql && sql.getErrorCode() == 1062) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 필수 쿼리 파라미터 누락 */
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ApiError> handleMissingParameter(MissingServletRequestParameterException ex) {
         ApiError error = new ApiError(ex.getParameterName() + " 값이 필요합니다.", "MISSING_PARAMETER");

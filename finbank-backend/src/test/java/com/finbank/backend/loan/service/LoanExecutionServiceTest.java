@@ -13,6 +13,7 @@ import com.finbank.backend.loan.domain.RepaymentType;
 import com.finbank.backend.loan.dto.LoanApplicationResponse;
 import com.finbank.backend.loan.dto.LoanApplyRequest;
 import com.finbank.backend.loan.dto.LoanExecutionResponse;
+import com.finbank.backend.loan.dto.RepaymentScheduleResponse;
 import com.finbank.backend.loan.repository.LoanApplicationRepository;
 import com.finbank.backend.loan.repository.LoanProductRepository;
 import com.finbank.backend.loan.repository.LoanTransactionRepository;
@@ -31,6 +32,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,6 +47,7 @@ class LoanExecutionServiceTest {
 
     @Autowired LoanApplicationService loanApplicationService;
     @Autowired LoanExecutionService loanExecutionService;
+    @Autowired LoanQueryService loanQueryService;
     @Autowired LoanProductRepository loanProductRepository;
     @Autowired LoanApplicationRepository loanApplicationRepository;
     @Autowired LoanTransactionRepository loanTransactionRepository;
@@ -98,9 +101,10 @@ class LoanExecutionServiceTest {
 
         LoanExecutionResponse res = loanExecutionService.execute(applicationId, UUID.randomUUID().toString());
 
-        // 스케줄 12회차, 원금 합계 = 대출 원금 (1원도 새지 않는다)
-        assertThat(res.schedules()).hasSize(TERM);
-        BigDecimal principalSum = res.schedules().stream()
+        // 스케줄 12회차, 원금 합계 = 대출 원금 (1원도 새지 않는다) — 스케줄은 실행 응답이 아니라 조회 API로 본다
+        List<RepaymentScheduleResponse> schedules = loanQueryService.getSchedules(res.loanId());
+        assertThat(schedules).hasSize(TERM);
+        BigDecimal principalSum = schedules.stream()
                 .map(s -> s.principalAmount())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         assertThat(principalSum).isEqualByComparingTo(LOAN_AMOUNT);
@@ -115,6 +119,22 @@ class LoanExecutionServiceTest {
                 .isEqualTo(ApplicationStatus.EXECUTED);
         assertThat(loanTransactionRepository.findAll()).hasSize(1)
                 .allSatisfy(tx -> assertThat(tx.getType()).isEqualTo(LoanTransactionType.EXECUTION));
+    }
+
+    @Test
+    @DisplayName("상품 최대 기간(60개월)도 실행된다 — 멱등 응답 칸(4000자)에 전 회차 스케줄을 담지 않으므로")
+    void execute_longestTerm() {
+        int longest = product.getMaxTermMonths();
+        LoanApplicationResponse applied = loanApplicationService.apply(
+                new LoanApplyRequest(product.getId(), account.getId(), LOAN_AMOUNT, longest));
+        String key = UUID.randomUUID().toString();
+
+        LoanExecutionResponse res = loanExecutionService.execute(applied.id(), key);
+        LoanExecutionResponse replay = loanExecutionService.execute(applied.id(), key);   // 저장된 응답 재생도 된다
+
+        assertThat(loanQueryService.getSchedules(res.loanId())).hasSize(longest);
+        assertThat(replay.loanId()).isEqualTo(res.loanId());
+        assertThat(loanTransactionRepository.findAll()).hasSize(1);
     }
 
     @Test

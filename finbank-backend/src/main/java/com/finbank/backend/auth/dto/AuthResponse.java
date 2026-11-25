@@ -32,7 +32,4 @@ public class AuthResponse {
     public String getRefreshToken() { return refreshToken; }
     public String getEmail() { return email; }
     public String getName() { return name; }
-
-    // 하위 호환: 프론트엔드가 "token" 키로 받는 경우를 위한 alias
-    public String getToken() { return accessToken; }
 }

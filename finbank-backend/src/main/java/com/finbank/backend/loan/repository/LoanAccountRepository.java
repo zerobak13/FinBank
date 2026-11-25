@@ -76,8 +76,17 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, Long>,
             """)
     int markOverdueIfActive(@Param("id") Long id);
 
-    /** 회원의 대출 목록 (최근 실행순) */
-    @Query("select l from LoanAccount l where l.member.id = :memberId order by l.id desc")
+    /**
+     * 회원의 대출 목록 (최근 실행순). 목록 한 줄에 상품명이 들어가므로 신청·상품을 함께 읽는다 —
+     * 따로 읽으면 대출마다 쿼리가 2번씩 더 나간다(N+1). 둘 다 단일 연관이라 페치 조인해도 행이 불어나지 않는다.
+     */
+    @Query("""
+            select l from LoanAccount l
+              join fetch l.application a
+              join fetch a.product
+             where l.member.id = :memberId
+             order by l.id desc
+            """)
     List<LoanAccount> findByMemberIdOrderByIdDesc(@Param("memberId") Long memberId);
 
     /**

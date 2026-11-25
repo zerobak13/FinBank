@@ -1,6 +1,5 @@
 package com.finbank.backend.loan.controller;
 
-import com.finbank.backend.config.SwaggerConfig;
 import com.finbank.backend.common.PageResponse;
 import com.finbank.backend.loan.dto.LoanDetailResponse;
 import com.finbank.backend.loan.dto.LoanExecutionResponse;
@@ -16,7 +15,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.HttpStatus;
@@ -33,7 +31,6 @@ import java.util.List;
  * 서버는 같은 키의 두 번째 요청에 저장해둔 응답을 그대로 돌려주므로 돈은 한 번만 움직인다.</p>
  */
 @Tag(name = "Loans", description = "대출 실행/상환/조회")
-@SecurityRequirement(name = SwaggerConfig.SECURITY_SCHEME_NAME)
 @RestController
 @RequestMapping("/api/loans")
 public class LoanController {
@@ -53,7 +50,8 @@ public class LoanController {
     }
 
     @Operation(summary = "대출 실행 (승인된 신청 → 원장 생성 + 스케줄 확정 + 연결계좌 입금)",
-            description = "같은 Idempotency-Key로 재요청하면 저장된 응답이 그대로 반환되고 돈은 다시 움직이지 않습니다.")
+            description = "같은 Idempotency-Key로 재요청하면 저장된 응답이 그대로 반환되고 돈은 다시 움직이지 않습니다. "
+                    + "상환 스케줄은 응답에 담지 않으니 GET /api/loans/{loanId}/schedules로 조회하세요.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "실행 완료"),
             @ApiResponse(responseCode = "409", description = "이미 실행된 신청 / 동일 키 요청 처리 중"),

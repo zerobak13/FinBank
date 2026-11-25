@@ -1,45 +1,40 @@
 package com.finbank.backend.account.controller;
 
-import com.finbank.backend.config.SwaggerConfig;
 import com.finbank.backend.account.dto.*;
 import com.finbank.backend.common.PageResponse;
+import com.finbank.backend.account.service.AccountMoneyService;
 import com.finbank.backend.account.service.AccountService;
-import com.finbank.backend.account.service.AccountTransferService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
-import java.math.BigDecimal;
 import java.net.URI;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 계좌 API 컨트롤러. 계좌 생성/조회와 입금·출금·이체 엔드포인트를 제공한다.
- * 모든 요청에 JWT 인증이 필요하다.
+ * 모든 요청에 JWT 인증이 필요하고, 돈이 움직이는 요청(입금·출금·이체)은 Idempotency-Key 헤더가 필수다.
  */
 @RestController
 @RequestMapping("/api/accounts")
 @Tag(name = "계좌 (Account)", description = "계좌 생성, 조회, 입출금, 이체 API. 모든 요청에 JWT 인증이 필요합니다.")
-@SecurityRequirement(name = SwaggerConfig.SECURITY_SCHEME_NAME)
 public class AccountController {
 
     private static final String IDEMPOTENCY_KEY = "Idempotency-Key";
 
     private final AccountService accountService;
-    private final AccountTransferService accountTransferService;
+    private final AccountMoneyService accountMoneyService;
 
     public AccountController(AccountService accountService,
-                             AccountTransferService accountTransferService) {
+                             AccountMoneyService accountMoneyService) {
         this.accountService = accountService;
-        this.accountTransferService = accountTransferService;
+        this.accountMoneyService = accountMoneyService;
     }
 
     @Operation(summary = "계좌 생성", description = "새 계좌를 개설합니다. 초기 입금액(initialDeposit)을 0 이상으로 설정할 수 있습니다.")
@@ -88,34 +83,44 @@ public class AccountController {
         return ResponseEntity.ok(accountService.getAccountTransactions(id, page, size));
     }
 
-    @Operation(summary = "입금", description = "지정한 계좌에 금액을 입금합니다. 본인 계좌만 가능합니다.")
+    @Operation(summary = "입금", description = """
+            지정한 계좌에 금액을 입금합니다(현금 입금). 본인 계좌만 가능합니다.
+
+            **멱등성**: `Idempotency-Key` 헤더가 필수입니다. 재시도에 같은 키를 보내면 다시 입금하지 않고 저장된 응답을 돌려줍니다.
+            """)
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "입금 완료"),
-            @ApiResponse(responseCode = "400", description = "입금액이 0 이하인 경우"),
-            @ApiResponse(responseCode = "403", description = "본인 계좌가 아닌 경우")
+            @ApiResponse(responseCode = "400", description = "금액이 1원 미만·소수·15자리 초과, Idempotency-Key 없음"),
+            @ApiResponse(responseCode = "403", description = "본인 계좌가 아닌 경우"),
+            @ApiResponse(responseCode = "409", description = "같은 키의 요청이 처리 중"),
+            @ApiResponse(responseCode = "422", description = "같은 키로 다른 내용의 요청")
     })
     @PostMapping("/{id}/deposit")
-    public ResponseEntity<Map<String, String>> deposit(
+    public ResponseEntity<CashResponse> deposit(
             @Parameter(description = "계좌 ID", example = "1") @PathVariable Long id,
-            @Parameter(description = "입금 금액 (1 이상)", example = "10000") @RequestParam BigDecimal amount
-    ) {
-        accountService.deposit(id, amount);
-        return ResponseEntity.ok(Map.of("message", "입금 완료"));
+            @Valid @RequestBody CashRequest request,
+            @RequestHeader(IDEMPOTENCY_KEY) String idempotencyKey) {
+        return ResponseEntity.ok(accountMoneyService.deposit(id, request.amount(), idempotencyKey));
     }
 
-    @Operation(summary = "출금", description = "지정한 계좌에서 금액을 출금합니다. 잔액 부족 시 오류가 발생합니다.")
+    @Operation(summary = "출금", description = """
+            지정한 계좌에서 금액을 출금합니다. 잔액이 부족하면 거절합니다.
+
+            **멱등성**: 입금과 같습니다 — `Idempotency-Key` 필수, 재시도에는 같은 키.
+            """)
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "출금 완료"),
-            @ApiResponse(responseCode = "400", description = "출금액이 0 이하이거나 잔액 부족"),
-            @ApiResponse(responseCode = "403", description = "본인 계좌가 아닌 경우")
+            @ApiResponse(responseCode = "400", description = "금액이 올바르지 않거나 잔액 부족, Idempotency-Key 없음"),
+            @ApiResponse(responseCode = "403", description = "본인 계좌가 아닌 경우"),
+            @ApiResponse(responseCode = "409", description = "같은 키의 요청이 처리 중"),
+            @ApiResponse(responseCode = "422", description = "같은 키로 다른 내용의 요청")
     })
     @PostMapping("/{id}/withdraw")
-    public ResponseEntity<Map<String, String>> withdraw(
+    public ResponseEntity<CashResponse> withdraw(
             @Parameter(description = "계좌 ID", example = "1") @PathVariable Long id,
-            @Parameter(description = "출금 금액 (1 이상)", example = "5000") @RequestParam BigDecimal amount
-    ) {
-        accountService.withdraw(id, amount);
-        return ResponseEntity.ok(Map.of("message", "출금 완료"));
+            @Valid @RequestBody CashRequest request,
+            @RequestHeader(IDEMPOTENCY_KEY) String idempotencyKey) {
+        return ResponseEntity.ok(accountMoneyService.withdraw(id, request.amount(), idempotencyKey));
     }
 
     @Operation(
@@ -147,6 +152,6 @@ public class AccountController {
     public ResponseEntity<TransferResponse> transfer(
             @Valid @RequestBody TransferRequest request,
             @RequestHeader(IDEMPOTENCY_KEY) String idempotencyKey) {
-        return ResponseEntity.ok(accountTransferService.transfer(request, idempotencyKey));
+        return ResponseEntity.ok(accountMoneyService.transfer(request, idempotencyKey));
     }
 }
