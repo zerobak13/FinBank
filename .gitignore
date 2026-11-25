@@ -12,6 +12,7 @@ finbank-backend/bin/
 finbank-backend/out/
 
 # [중요] 실제 비밀번호가 있는 로컬 설정 파일 제외
+/.env
 finbank-backend/src/main/resources/application-local.yml
 
 # --- Frontend (React / Node.js) ---

@@ -30,8 +30,11 @@ MySQL을 설치하지 않아도 백엔드와 DB가 한 번에 뜹니다.
 ```bash
 git clone https://github.com/zerobak13/FinBank.git
 cd FinBank
+cp .env.example .env         # 비밀번호·JWT 키 세 칸을 채운다 (예: openssl rand -base64 32)
 docker compose up            # 백엔드 :8080, MySQL :3306
 ```
+
+- 비밀번호와 JWT 키는 저장소에 없습니다. `.env`(gitignore 대상)에 직접 만든 값을 넣고, 빈 칸이 있으면 compose가 기동 전에 어떤 값이 빠졌는지 알려 줍니다.
 
 - API 문서(Swagger UI): http://localhost:8080/swagger-ui.html — 회원가입 → 로그인 → `Authorize`에 응답의 `accessToken` 값만 넣으면(`Bearer `는 자동) 모든 API를 직접 호출해 볼 수 있습니다.
 - 3306 포트를 이미 쓰고 있다면(로컬 MySQL 등) `MYSQL_HOST_PORT=3307 docker compose up`

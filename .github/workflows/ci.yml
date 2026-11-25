@@ -103,3 +103,7 @@ jobs:
       - name: 빌드
         working-directory: finbank-frontend
         run: npm run build
+
+      - name: 테스트 (node:test — API 클라이언트·금액 입력 파서)
+        working-directory: finbank-frontend
+        run: npm test

@@ -2351,8 +2351,11 @@ PR (열기 · 푸시 · 라벨 붙이기/떼기)
 ```bash
 git clone ...
 cd FinBank
+cp .env.example .env   # 비밀번호·JWT 키 세 칸을 채운다
 docker compose up      # 백엔드 :8080, MySQL :3306
 ```
+
+**비밀값은 저장소에 두지 않습니다.** compose 파일은 `${DB_PASSWORD:?…}`처럼 `.env`의 값을 참조만 하고, `.env`는 `.gitignore` 대상입니다. 저장소에는 빈 칸만 있는 `.env.example`이 올라갑니다. 값이 비어 있으면 `:?` 문법 때문에 compose가 기동 전에 멈추고 빠진 값의 이름을 알려 줍니다. healthcheck도 `$$MYSQL_ROOT_PASSWORD`로 컨테이너 안의 환경변수를 읽어서, 파일 어디에도 비밀번호가 적히지 않습니다.
 
 MySQL 버전, 문자셋, 초기 스키마 두 개까지 **코드로 고정**했습니다. 리뷰어가 5분 안에 실행해볼 수 있습니다.
 
@@ -2711,6 +2714,7 @@ git show 63bbb2d                     # 특정 커밋에서 무엇이 왜 바뀌�
 
 ```bash
 git clone https://github.com/zerobak13/FinBank.git && cd FinBank
+cp .env.example .env                   # 세 칸을 채운다 (예: openssl rand -base64 32)
 docker compose up                      # 백엔드 :8080 + MySQL :3306 (처음엔 2~3분)
 ```
 
@@ -2781,7 +2785,7 @@ scripts/harness/fast-test.sh           # 계산 엔진 + 불변식 하네스 457
 DB를 직접 보고 싶으면:
 
 ```bash
-docker exec -it finbank-mysql mysql -ufinuser -pfinpass1234 finbank
+docker exec -it finbank-mysql mysql -ufinuser -p finbank   # 비밀번호 입력 — .env의 DB_PASSWORD
 SELECT id, account_number, balance FROM accounts;
 SELECT type, amount, balance_after FROM transaction_logs;
 ```
@@ -2807,8 +2811,9 @@ SELECT type, amount, balance_after FROM transaction_logs;
 MySQL이 떠 있는 상태에서(`docker compose up` 유지) 테스트를 돌립니다. 테스트는 `finbank_test` 스키마를 씁니다.
 
 ```bash
+set -a; . ./.env; set +a      # 저장소 루트에서 — .env의 DB_PASSWORD·JWT_SECRET_KEY를 환경변수로
 cd finbank-backend
-DB_USERNAME=finuser DB_PASSWORD=finpass1234 JWT_SECRET_KEY=LocalComposeJwtSecretKeyForFinbank1234567890 \
+DB_USERNAME=finuser \
 ./gradlew test --tests 'com.finbank.backend.account.service.WithdrawConcurrencyTest'
 ```
 
@@ -2913,7 +2918,8 @@ scripts/harness/fast-test.sh          # 이 단계의 테스트는 전부 여기
 **직접 해 보기**: 배치 테스트 16개를 돌리고 로그의 `[연체 감지] N건 전이`를 찾아보세요.
 
 ```bash
-cd finbank-backend && DB_USERNAME=finuser DB_PASSWORD=finpass1234 JWT_SECRET_KEY=LocalComposeJwtSecretKeyForFinbank1234567890 \
+set -a; . ./.env; set +a      # 저장소 루트에서 — .env의 값을 환경변수로
+cd finbank-backend && DB_USERNAME=finuser \
 ./gradlew test --tests 'com.finbank.backend.loan.batch.*'
 ```
 
