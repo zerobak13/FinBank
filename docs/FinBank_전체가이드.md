@@ -24,7 +24,7 @@ toc-title: "목차"
 9. **검색과 인덱스** — 느린 걸 빠르게
 10. **배치** — 밤에 혼자 도는 프로그램 (구조·코드·운영까지)
 11. **예외 처리** — 오류를 어떻게 알려주나
-12. **테스트** — 554개가 무엇을 지키고 있나
+12. **테스트** — 563개가 무엇을 지키고 있나
 13. **불변식 하네스** — 정답을 몰라도 틀린 걸 잡는 법
 14. **AI 에이전트 하네스** — 만드는 AI와 검증하는 AI를 나누다
 15. **자동화와 실행 환경** — CI, Docker, 판정 기준 가드
@@ -62,6 +62,7 @@ toc-title: "목차"
 | 19장 | 처음부터 따라가며 보기 — 7단계 코드 읽기 길잡이, 직접 해 보기, 점검표 (11-15) |
 | 0-2 | PR #21 머지 후 전체 코드 점검 결과 (11-15) |
 | 0-3 | 두 번째 전체 점검 — 동시 상환을 덮어쓰던 배치·취소, 그 수정이 드러낸 데드락 2건, 한도·요청 오류·화면 (11-25) |
+| 0-4 | 세 번째 점검 — 22개월 이상 대출 실행 실패, 중도상환 경합, 입금·출금 멱등키, CI 가드·CORS·시간대 (11-26) |
 | 3-2, 3-3 | ERD 다시 그림 — 11개 표 전부(V1~V7, 11-24에 V8 반영), 키만 남긴 관계도, 선 끝 모양 읽는 법 (11-15) |
 | 15-2 | 판정 기준 가드 CI (Harness Guard) |
 | 16장 ⑨~⑫ | 실패 기록 4건 |
@@ -78,10 +79,10 @@ toc-title: "목차"
 | 3-5, 18장 | 마이그레이션 V1~V6 | V1~V8 (V7: 대출 신청 시 입금 계좌 지정 2026-08, V8: 원장의 연체이자 칸 2026-11) |
 | 4-1, 12-2, 18장 | 자동심사 룰 3개 | 2개 — `HasActiveAccountRule`은 V7 때 도달 불가능해져 삭제 (7-5) |
 | 5-4 | 락 없는 쪽 결과를 고정값처럼 적음 | 실행할 때마다 달라지는 값임을 명시 |
-| 12장, 15장, 18장 | 테스트 333개 | 554개 (2026-11-25 기준, 성능 측정 2개는 별도) |
+| 12장, 15장, 18장 | 테스트 333개 | 563개 (2026-11-26 기준, 성능 측정 2개는 별도) |
 | 12-2 | `LoanApplicationServiceTest` 8개 · `TransferRuleTest` 6개 · `ScheduleGeneratorTest` 12개 | 15개 · 11개 · 14개 |
 | 부록 A-3 | 연체 후보 조회 쿼리를 단순화해 적음 | 실제 쿼리 (`join fetch` 포함) |
-| 부록 A-6 | 멱등키 필수 API 3개 | 4개 (이체 추가) |
+| 부록 A-6 | 멱등키 필수 API 3개 | 6개 (이체 추가, 11-26에 입금·출금 추가) |
 | 부록 A-7 | 화면마다 키를 다루는 예시 | 공통 모듈 `api/idempotency.js` |
 | 부록 A-1 | 상환 회차의 `markPaid()`·`cancelByPrepayment()` 등을 현역처럼 소개 | 쓰이지 않는 메서드였고 11-15에 삭제 — 상태 전이는 조건부 UPDATE로만 |
 | 3-3 | 연결 그림에 멱등키 표가 없고, 연체 이력이 상환 회차에만 매달린 것처럼 그림 | 멱등키(회원 FK) 추가, 연체 이력은 대출 계약·상환 회차 둘 다에 FK |
@@ -132,6 +133,26 @@ V8까지 마친 뒤 코드를 처음부터 다시 읽었습니다. 이번에는 
 | 쓰이지 않는 코드(`LoanSearchCondition.isEmpty()`, `Account.unlock()`, 화면의 API 함수 2개)와 단계 표기(C1·D단계 등) 주석 | 읽는 사람이 쓰이는 줄 안다 | 삭제·정리 |
 
 확인은 전체 테스트 554개와 화면 테스트 20개. 경합·데드락 회귀 테스트는 **고치기 전 코드로 되돌려 실패하는 것까지** 확인했습니다(데드락은 MySQL의 `Deadlock found when trying to get lock`으로).
+
+## 0-4. 세 번째 점검 (2026-11-26)
+
+0-3까지 머지한 main을 다시 처음부터 읽었습니다. 이번에도 **동작이 틀린 곳이 있었고**, 가장 큰 것은 테스트가 12개월 대출만 써서 가려져 있었습니다.
+
+| 발견 | 왜 문제인가 | 조치 |
+|---|---|---|
+| 대출 실행 응답에 전 회차 스케줄을 담아 멱등키 표의 응답 칸(`VARCHAR(4000)`)에 저장 | 원금 1,000만·연 5.9% 기준 응답 JSON이 12개월 2,320자, **22개월 4,068자**, 60개월 10,711자 — 22개월부터 MySQL이 `Data too long`으로 거절해 **실행 전체가 롤백**됐다. 화면에는 "중복된 요청입니다"로 보였다. 상품 최대 기간은 60·36개월인데 테스트는 전부 12개월 | 응답에서 스케줄을 빼고(`GET /api/loans/{loanId}/schedules`로 조회), 상품 최대 기간(60개월) 실행 테스트 추가 |
+| 전액 중도상환이 같은 대출의 회차 상환과 겹침 | 중도상환은 첫 조회에서 스냅샷이 잡힌 뒤 계좌 락을 기다린다. 그 사이 끝난 상환을 일반 조회로는 못 봐서 경과이자 기산일이 한 회차 앞으로 당겨진다 — 이자를 한 회차분 더 받는다 | 마지막 납부 회차를 공유 잠금 조회로(인덱스 고정, 10-8과 같은 이유), 두 스레드 테스트 |
+| 입금·출금에 멱등키가 없었고 금액을 쿼리 파라미터로 받음 | "돈이 움직이는 API는 멱등 실행기로"라는 원칙과 어긋난다 — 응답을 못 받고 다시 누르면 두 번 출금 | 본문(`CashRequest`) + `Idempotency-Key` 필수, 진입점은 `AccountMoneyService` 하나. 돈을 옮기는 본체는 패키지 밖에 공개하지 않음 (5-3) |
+| 모든 DB 제약 위반을 "중복된 요청"(409)으로 답함 | 길이 초과·FK 위반도 '중복'으로 보여 원인이 가려진다 — 위의 실행 실패가 그 예 | UNIQUE 위반(MySQL 1062)만 409, 나머지는 500으로 기록. 회원가입 이메일·이름 길이는 요청 단계에서 400 |
+| CI 판정 기준 가드가 PR에 담긴 가드 스크립트로 실행 | 규칙 파일이나 워크플로를 고친 PR이 스스로를 통과시킬 수 있다 | `pull_request_target` — 기준 브랜치의 가드로 PR의 파일 목록만 검사 (15-2) |
+| CORS가 `https://finbank-frontend-*.vercel.app` + 자격 증명 허용 | 남이 만든 같은 이름의 Vercel 프로젝트도 통과한다. 쿠키를 쓰지 않으니 자격 증명 허용은 필요 없다 | 정확히 일치하는 주소만(설정값 `app.cors.allowed-origins`), 자격 증명 허용 끔 |
+| 배치 시각·업무 날짜가 서버 시간대를 따름 | 클라우드(UTC)에서는 02:00이 한국 11:00이 되고, 기준일도 하루 밀린다 | `@Scheduled(zone = "Asia/Seoul")`, 컨테이너 JVM 시간대 고정 |
+| Docker 빌드가 `application-local.yml`까지 이미지에 넣음, MySQL 포트를 모든 네트워크에 엶 | 로컬 비밀번호가 이미지·jar에 들어가고, 같은 와이파이에서 DB 접속을 시도할 수 있다 | `.dockerignore`, `127.0.0.1`에만 바인딩, 컨테이너는 root가 아닌 계정으로 |
+| `DatabaseCleaner`가 어느 DB든 비움 | 셸에 개발 DB 주소(`DB_URL`)가 남아 있으면 테스트가 개발 데이터를 지운다 | 스키마 이름이 `_test`로 끝날 때만 지운다 (12-5) |
+| 만료 토큰 삭제가 예외로 롤백돼 실제로는 지워지지 않음, 인증 테스트 0개 | 코드가 말하는 것과 하는 것이 다르다 | 그 줄 삭제(다음 로그인이 정리), `AuthServiceTest` 5개 |
+| 중복·안 쓰는 것 — 컨트롤러마다 단 Swagger 보안 이름과 그 가드 테스트(전역 보안과 중복), 응답의 `token` 별칭, 화면의 상품 목록 사본(`FALLBACK_PRODUCTS`), 쓰이지 않던 vite proxy, 대출 목록의 N+1, JWT를 요청마다 두 번 파싱, 오래된 문서 2개 | 같은 정보가 두 군데 있으면 언젠가 어긋난다 | 삭제·정리. 회원가입은 응답 토큰으로 바로 로그인, 비밀번호는 8자 이상 |
+
+확인: 화면 `npm test` 20개와 배포 빌드, 가드 단위 테스트 30개, 바뀐 자바 파일 문법 검사. 백엔드 전체 테스트는 PR CI에서 돈다.
 
 ---
 
@@ -380,7 +401,7 @@ DB 표를 바꿀 때 손으로 직접 고치면, 내 컴퓨터와 서버의 표 
 com.finbank.backend
  ├─ account/     수신: 계좌·입출금·이체
  │   ├─ controller/   AccountController
- │   ├─ service/      AccountService, AccountTransferService (이체 멱등 껍데기)
+ │   ├─ service/      AccountService, AccountMoneyService (입금·출금·이체 멱등 껍데기)
  │   ├─ domain/       Account, TransactionLog, TransactionType
  │   ├─ repository/   AccountRepository, TransactionLogRepository
  │   └─ dto/          요청·응답 그릇
@@ -581,6 +602,14 @@ if (account.isLocked()) {
 ### 2026.11 보강 — 금액 규칙을 입금·출금에도 (11-25)
 
 이체와 계좌 개설은 요청 본문의 검증(`@Digits(integer = 15, fraction = 0)`)으로 원 단위 정수만 받습니다. 그런데 입금·출금은 금액을 **쿼리 파라미터**로 받아 이 검증을 거치지 않았고, 0.5원 입금이 그대로 통과해 잔액에 화면에 보이지 않는 소수가 남을 수 있었습니다. 지금은 서비스가 세 거래 모두 같은 규칙(0보다 큰 원 단위 정수, 15자리 이하)을 **락을 걸기 전에** 검사합니다. 거래내역의 페이지 크기도 1~100으로 묶었습니다(`size=100000` 한 번으로 수십만 줄을 읽지 않게). 같은 시기에 "권한 확인 → 락" 순서를 대출 상환에도 적용했습니다(8-8).
+
+### 2026.11 보강 — 입금·출금에도 멱등키 (11-26)
+
+이체·대출 실행·상환에는 멱등키가 있는데 입금·출금에는 없었습니다. 응답을 못 받고 다시 누르면 출금이 두 번 됩니다. 지금은 세 거래가 같은 길로 갑니다.
+
+- 요청: 금액은 본문(`CashRequest` — 이체와 같은 검증), `Idempotency-Key` 헤더 필수
+- 진입점: `AccountMoneyService` 하나(입금·출금·이체) — 키 선점 → 본체 → 같은 트랜잭션에서 응답 확정 (8-9와 같은 구조)
+- 본체(`AccountService`의 입금·출금·이체)는 **패키지 밖에 공개하지 않습니다.** 다른 코드가 멱등 처리를 건너뛰고 돈을 옮길 수 없게 — 스프링 6부터 클래스 기반 프록시는 package-private 메서드에도 트랜잭션을 겁니다
 
 ## 5-4. 동시성 — 이 프로젝트의 심장
 
@@ -1021,13 +1050,13 @@ UPDATE repayment_schedules
 처음에는 멱등키가 **여신(실행·상환)에만** 있었습니다. 그런데 버튼 두 번이 가장 위험한 곳은 사실 **이체**입니다. 그래서 상환에서 만든 멱등 실행기를 이체에 그대로 씌웠습니다. 구조도 상환과 똑같이 **껍데기 + 본체**입니다. 껍데기에는 트랜잭션이 없고, 본체가 트랜잭션 안에서 이체와 응답 확정을 함께 합니다.
 
 ```java
-// AccountTransferService — 껍데기: 키 선점·해제는 각자 별도 트랜잭션 (그래서 여기엔 트랜잭션이 없다)
+// AccountMoneyService — 껍데기: 키 선점·해제는 각자 별도 트랜잭션 (그래서 여기엔 트랜잭션이 없다)
+// 11-26부터 입금·출금도 같은 껍데기를 쓴다 (5-3)
 public TransferResponse transfer(TransferRequest request, String idempotencyKey) {
     Long memberId = currentMember.currentId();
-    String amount = request.getAmount() == null ? null
-            : request.getAmount().stripTrailingZeros().toPlainString();   // 70000 == 70000.00
     String hash = RequestHash.of("account-transfer", memberId,
-            request.getFromAccountId(), request.getToAccountNumber(), amount);
+            request.getFromAccountId(), request.getToAccountNumber(),
+            normalize(request.getAmount()));                               // 70000 == 70000.00
 
     return idempotentExecutor.run(idempotencyKey, memberId, hash, TransferResponse.class,
             () -> accountService.transfer(request, idempotencyKey));      // 본체 (@Transactional)
@@ -1180,9 +1209,9 @@ public Step overdueDetectionStep(JobRepository jobRepository,
 ## 10-3. 스케줄러 — 언제, 무엇을, 어떤 순서로
 
 ```java
-@Scheduled(cron = "0 0 2 * * *")          // 초 분 시 일 월 요일 → 매일 02:00:00
+@Scheduled(cron = "0 0 2 * * *", zone = "Asia/Seoul")   // 초 분 시 일 월 요일 → 매일 한국 시간 02:00:00
 public void runDailyOverdueSettlement() {
-    LocalDate baseDate = LocalDate.now();
+    LocalDate baseDate = LocalDate.now(BUSINESS_ZONE);        // 서버 시간대(클라우드는 UTC)를 따르지 않게
     JobParameters params = new JobParametersBuilder()
             .addString("baseDate", baseDate.toString())   // 파라미터는 기준일 하나
             .toJobParameters();
@@ -1665,23 +1694,24 @@ public ResponseEntity<ApiError> handleException(Exception ex) {
 
 \newpage
 
-# 12. 테스트 — 554개가 무엇을 지키나
+# 12. 테스트 — 563개가 무엇을 지키나
 
 ## 12-1. 철학: 개수보다 "위험한 곳"
 
 모든 코드를 다 테스트하지 않았습니다. **틀렸을 때 돈이 사라지는 곳**에 집중했습니다. 그리고 2026년 10월부터는 "사람이 고른 입력"의 한계를 넘기 위해 **불변식 하네스**(13장)를 더했습니다.
 
-**554개는 `./gradlew test`가 실제로 실행하는 수**입니다(2026-11-25 기준) — `@Test` 메서드 129개 + 파라미터 테스트 실행 425회(240조합 + 계산기 143조합 + 케이스 파일 42건). 성능 측정 2개(`perf` 태그)는 평소 제외합니다. 화면 쪽 테스트(`npm test` 20개 — 토큰 처리 `client.test.js` 16개 + 금액·날짜 규칙 `formatter.test.js` 4개, 5-1)도 이 수에는 넣지 않았습니다.
+**563개는 `./gradlew test`가 실제로 실행하는 수**입니다(2026-11-26 기준) — `@Test` 메서드 138개 + 파라미터 테스트 실행 425회(240조합 + 계산기 143조합 + 케이스 파일 42건). 성능 측정 2개(`perf` 태그)는 평소 제외합니다. 화면 쪽 테스트(`npm test` 20개 — 토큰 처리 `client.test.js` 16개 + 금액·날짜 규칙 `formatter.test.js` 4개, 5-1)도 이 수에는 넣지 않았습니다.
 
 | 묶음 | 개수 |
 |---|---:|
-| 수신 (동시성·규칙·멱등) | 23 |
-| 공통 (예외·페이지·API 문서) | 8 |
+| 수신 (동시성·규칙·멱등) | 25 |
+| 인증 | 5 |
+| 공통 (예외·페이지) | 8 |
 | 여신 계산 엔진 | 270 |
 | 불변식 하네스 | 190 |
-| 여신 통합 (실제 DB) | 47 |
+| 여신 통합 (실제 DB) | 49 |
 | 배치 | 16 |
-| **합계** | **554** |
+| **합계** | **563** |
 
 이 중 계산 엔진 패키지(`domain/calculator`)와 불변식 하네스를 합친 **457개**가 DB 없이 수십 초면 도는 **빠른 테스트**(`fast-test.sh`)입니다. AI 에이전트가 실행할 수 있는 유일한 명령이기도 합니다(14장).
 
@@ -1700,14 +1730,20 @@ public ResponseEntity<ApiError> handleException(Exception ex) {
 | `TransactionLogTest` | 3 | 입금·출금·이체 시 원장이 정확히 남는가 (이체는 2줄) |
 | `TransferRuleTest` | 11 | 잔액부족·같은계좌·남의계좌·잠금계좌 거부 + **잠금 계좌 입출금 차단**, 남의 계좌 입출금은 **락을 걸기 전에 403**, 입출금 금액 규칙(0.5원·16자리 거부) |
 | `TransferIdempotencyTest` | 5 | 같은 키 순차 재시도 → 재생, 금액만 바꾸면 422, `70000` = `70000.00`, 실패 시 키 해제, **같은 키 100개 동시 → 이체 1회** |
+| `CashIdempotencyTest` | 2 | 입금·출금도 같은 키 재시도 → 돈은 1번만, 같은 키로 금액을 바꾸면 422 (11-26) |
 
-### 공통 — 예외·페이지·API 문서
+### 인증
 
 | 파일 | 개수 | 무엇을 지키나 |
 |---|---:|---|
-| `GlobalExceptionHandlerTest` | 5 | 예외 → 상태코드 매핑 (코드가 상태를 정함 — 401·409·422·503 포함) + **스프링 요청 오류는 4xx** (없는 주소 404, 요청 방식 405, 빠진 파라미터·깨진 본문·형식 오류 400) |
+| `AuthServiceTest` | 5 | 가입 즉시 토큰·비밀번호 해시 저장, 이메일 중복 409·틀린 비밀번호 401, **재발급 뒤 옛 Refresh Token 사용 불가(Rotation)**, 로그아웃한 토큰 사용 불가, 만료 토큰 401 (11-26) |
+
+### 공통 — 예외·페이지
+
+| 파일 | 개수 | 무엇을 지키나 |
+|---|---:|---|
+| `GlobalExceptionHandlerTest` | 6 | 예외 → 상태코드 매핑 (코드가 상태를 정함 — 401·409·422·503 포함) + **스프링 요청 오류는 4xx** (없는 주소 404, 요청 방식 405, 빠진 파라미터·깨진 본문·형식 오류 400) + **DB 제약 위반은 UNIQUE만 409** |
 | `PagingPolicyTest` | 2 | 페이지 번호 0 이상·크기 1~100, 벗어나면 400 |
-| `SwaggerSecurityNameTest` | 1 | 모든 컨트롤러의 Swagger 보안 이름 = 등록한 스킴 이름 (대소문자까지) |
 
 ### 여신 — 계산 엔진 (DB 없이 순수 자바)
 
@@ -1733,10 +1769,11 @@ public ResponseEntity<ApiError> handleException(Exception ex) {
 | 파일 | 개수 | 무엇을 지키나 |
 |---|---:|---|
 | `LoanApplicationServiceTest` | 15 | 자동심사 2룰(한도·연체, **승인만 받은 신청도 한도에 셈**) + 상품 한도·기간 검증(422) + **입금 계좌 지정 검증**(없음 404·남의 계좌 403·잠금 400) + 취소 (실행·탈락한 신청은 409, **실행과 겹친 취소도 409**) |
-| `LoanExecutionServiceTest` | 7 | 실행 정합성, **멱등 재생**, 이중 실행 409, 키 재사용 422, 실패 시 키 해제 |
+| `LoanExecutionServiceTest` | 8 | 실행 정합성, **멱등 재생**, 이중 실행 409, 키 재사용 422, 실패 시 키 해제, **상품 최대 기간(60개월) 실행** |
 | `LoanRepaymentServiceTest` | 12 | 회차 상환, 순서 규칙, 멱등, 완납, 전액 중도상환, **연체 회차 — 연체이자까지 한 번에 출금, 모자라면 전부 거절, 스케줄의 연체이자 = 실제 출금액** |
 | `LoanRepaymentAuthorizationTest` | 3 | 남의 대출 상환·중도상환 403, 없는 대출 404 — **락을 걸기 전에** (목 객체, DB 없음) |
 | `LoanRepaymentConcurrencyTest` | 2 | **100스레드 동시 상환 → 1건만**, 같은 키 100회 → 돈은 1번만 |
+| `LoanPrepaymentConcurrencyTest` | 1 | 회차 상환이 끝나기를 기다린 중도상환이 **방금 끝난 상환을 보고** 경과이자를 센다 (두 스레드, 11-26) |
 | `LoanSearchTest` | 8 | 조건 조합, 경계 포함, 타인 대출 미노출, 페이징 |
 
 ### 배치
@@ -1780,7 +1817,7 @@ perfTest { useJUnitPlatform { includeTags 'perf' } }   // 필요할 때만
 
 테스트는 `DatabaseCleaner`로 **모든 표를 비웁니다.** 개발용 DB를 그대로 쓰면 `./gradlew test` 한 번에 개발하며 만든 데이터가 전부 사라집니다.
 
-→ 테스트는 **`finbank_test`** 스키마, 개발 서버는 **`finbank`** 스키마로 갈랐습니다.
+→ 테스트는 **`finbank_test`** 스키마, 개발 서버는 **`finbank`** 스키마로 갈랐습니다. 그래도 셸에 `DB_URL`이 개발 DB로 남아 있으면 위험하므로, `DatabaseCleaner`는 스키마 이름이 `_test`로 끝날 때만 지웁니다(11-26).
 
 > **왜 중요한가?** 테스트가 "돌리기 무서운 것"이 되면 **결국 안 돌리게 됩니다.**
 
@@ -2316,8 +2353,9 @@ Mac에 Claude Code CLI를 설치하고, 먼저 가짜 입력 JSON으로 hook을 
 
 ```
 push(main/develop) 또는 PR
-  → 백엔드: MySQL 컨테이너 띄우고 554개 테스트
-  → 프론트엔드: 빌드
+  → 백엔드: MySQL 컨테이너 띄우고 563개 테스트
+  → 프론트엔드: 빌드 + 화면 테스트 20개
+  → 하네스: 가드 규칙 단위 테스트 30개
   → 하나라도 빨간불이면 머지 못 함
 ```
 
@@ -2329,18 +2367,25 @@ push(main/develop) 또는 PR
 
 ```
 PR (열기 · 푸시 · 라벨 붙이기/떼기)
-  → 가드 규칙 단위 테스트 30개          python3 -m unittest
-  → 판정 기준 변경 검사                  diff_guard.py --base origin/<기준 브랜치> --role pr
+  → 판정 기준 변경 검사 (기준 브랜치의 가드 코드로)   diff_guard.py --base origin/<기준 브랜치> --role pr
        판정 기준 파일이 바뀌었는데 oracle-approved 라벨이 없으면 → 실패
+가드 규칙 단위 테스트 30개는 ci.yml에서 돈다 (PR에서 고친 가드는 거기서 검증)
 ```
 
 ```yaml
+on:
+  pull_request_target:          # 기준 브랜치의 워크플로로 돈다 — PR이 이 파일을 고쳐도 소용없다
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+# ...
 - name: 판정 기준 변경 검사
-  if: github.event_name == 'pull_request'
-  env:
-    ORACLE_APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'oracle-approved') }}
-  run: python3 scripts/harness/diff_guard.py --base "origin/${{ github.base_ref }}" --role pr
+  run: |
+    cp -r scripts/harness "$RUNNER_TEMP/guard"          # 기준 브랜치의 가드를 먼저 복사
+    git fetch --no-tags origin "pull/$PR_NUMBER/head:pr-head"
+    git checkout --quiet --detach pr-head              # PR은 파일 목록만 본다 — 실행하지 않는다
+    python3 "$RUNNER_TEMP/guard/diff_guard.py" --root "$GITHUB_WORKSPACE" --base "origin/$BASE_REF" --role pr
 ```
+
+- **왜 `pull_request_target`인가** — `pull_request`는 PR에 담긴 워크플로·스크립트로 돌아서, 규칙 파일을 고친 PR이 스스로를 통과시킬 수 있었습니다(11-26 점검). PR 코드는 실행하지 않고 바뀐 파일 이름만 보므로 이 트리거를 써도 안전합니다.
 
 - **라벨 이벤트에도 다시 돈다** — `labeled`/`unlabeled`를 트리거에 넣어, 라벨을 붙이는 순간 재검사됩니다.
 - **왜 라벨인가** — 1인 저장소에서는 본인 PR을 본인이 승인할 수 없어 `CODEOWNERS` 승인이 의미가 없습니다. 그래서 "사람이 일부러 라벨을 붙였다"를 승인 표시로 씁니다.
@@ -2633,7 +2678,7 @@ UPDATE는 항상 최신 커밋본을 기준으로 조건을 평가하므로, **�
 | 판정 기준 보호 | hook + diff 가드 + CI 라벨 가드 | 수정 시도 **2회 차단·기록**, 가드 테스트 30개 |
 | 인덱스 효과 | 10만 건 EXPLAIN 전/후 | **36배 / 26배** |
 | 배치 처리량 | 5만 건 청크 3종 비교 | **3.8배** (수확 체감 확인) |
-| 자동 검증 | CI에서 매 커밋 | **테스트 554개** |
+| 자동 검증 | CI에서 매 커밋 | **테스트 563개** |
 
 ## 전 구간 흐름
 
@@ -2660,7 +2705,7 @@ UPDATE는 항상 최신 커밋본을 기준으로 조건을 평가하므로, **�
         ↓
 [사람: diff 가드 → 커밋] → [검증 AI: 케이스 추가 + 리포트] → [사람: 판단]
         ↓
-[PR: CI 554개 + 판정 기준 가드(oracle-approved 라벨)]
+[PR: CI 563개 + 판정 기준 가드(oracle-approved 라벨)]
 ```
 
 ## 처음부터 다시 만든다면 — 순서
@@ -2684,7 +2729,7 @@ UPDATE는 항상 최신 커밋본을 기준으로 조건을 평가하므로, **�
 
 ---
 
-*FinBank — 2026.11.25 기준 (개정판). 테스트 554개(+ 화면 20개), 마이그레이션 V1~V8, 불변식 25개, 전 구간 CI 검증 + 판정 기준 가드.*
+*FinBank — 2026.11.26 기준 (개정판). 테스트 563개(+ 화면 20개), 마이그레이션 V1~V8, 불변식 25개, 전 구간 CI 검증 + 판정 기준 가드.*
 
 \newpage
 
@@ -2775,10 +2820,10 @@ scripts/harness/fast-test.sh           # 계산 엔진 + 불변식 하네스 457
 
 **직접 해 보기 (Swagger)**
 
-1. `POST /api/auth/register` — 이메일·이름·비밀번호로 가입. 응답의 `accessToken`을 복사
+1. `POST /api/auth/register` — 이메일·이름·비밀번호(8자 이상)로 가입. 응답의 `accessToken`을 복사
 2. 오른쪽 위 **Authorize** 버튼 → 토큰 값만 붙여 넣기 (`Bearer `는 Swagger가 붙입니다 — 직접 쓰면 `Bearer Bearer …`가 되어 401)
 3. `POST /api/accounts` — 계좌 개설 (응답 헤더 `Location` 확인)
-4. `POST /api/accounts/{id}/deposit` — 입금
+4. `POST /api/accounts/{id}/deposit` — 입금 (본문 `{"amount": 10000}`, 헤더 `Idempotency-Key`에는 아무 UUID — 같은 값으로 다시 보내면 입금되지 않고 같은 응답)
 5. `GET /api/accounts/{id}/transactions` — 원장에 `DEPOSIT` 한 줄이 남았는지
 6. 토큰을 지우고(Authorize → Logout) 4번을 다시 → 거부됨(**401**, 출입증 없음). 다른 계정으로 가입해 그 토큰으로 4번 → **403** (남의 계좌). 401은 "누군지 모름", 403은 "누군지는 알지만 권한 없음" — 상태 코드부터 다르다는 것을 확인해 보세요
 
@@ -2892,7 +2937,7 @@ scripts/harness/fast-test.sh          # 이 단계의 테스트는 전부 여기
 | 2 | `common/idempotency/IdempotencyStore.java` | 메서드마다 전파 속성이 다르다 — `claim` `REQUIRES_NEW`, `complete` `MANDATORY`, `release` `REQUIRES_NEW`. 각각의 이유는 8-4 표 |
 | 3 | `common/idempotency/RequestHash.java` | 같은 키로 **다른 내용**을 보내는 걸 잡는 장치(422) |
 | 4 | `resources/db/migration/V5__create_idempotency_keys.sql` | `uq_idem_key` UNIQUE 제약 — 동시에 두 요청이 와도 하나만 선점한다 |
-| 5 | `account/service/AccountTransferService.java` | 이체에 같은 실행기를 씌운 모습(8-9). 금액을 `stripTrailingZeros`로 정규화하는 이유 |
+| 5 | `account/service/AccountMoneyService.java` | 입금·출금·이체에 같은 실행기를 씌운 모습(8-9, 5-3). 금액을 `stripTrailingZeros`로 정규화하는 이유 |
 | 6 | `test/…/account/service/TransferIdempotencyTest.java` | 5개 테스트 이름 = 멱등키 요구사항 5개 |
 | 7 | `finbank-frontend/src/api/idempotency.js` | 화면 쪽 규칙: 버튼 1회 = 키 1개, 네트워크 실패만 같은 키로 재시도 |
 
@@ -3371,8 +3416,8 @@ public <T> T run(String idemKey, Long memberId, String requestHash,
 | GET | `/` | 내 계좌 목록 |
 | GET | `/{id}` | 계좌 상세 (소유권 검증) |
 | GET | `/{id}/transactions` | 거래내역 (페이징 — 크기 1~100) |
-| POST | `/{id}/deposit` | 입금 |
-| POST | `/{id}/withdraw` | 출금 |
+| POST | `/{id}/deposit` | 입금 — 본문 `{amount}`, **Idempotency-Key 필수** (2026.11~) |
+| POST | `/{id}/withdraw` | 출금 — 본문 `{amount}`, **Idempotency-Key 필수** (2026.11~) |
 | POST | `/transfer` | 이체 — **Idempotency-Key 필수** (2026.10~) |
 
 ### 대출 상품 `/api/loans/products`
@@ -3402,9 +3447,9 @@ public <T> T run(String idemKey, Long memberId, String requestHash,
 | GET | `/{loanId}` | | 대출 상세 |
 | GET | `/{loanId}/schedules` | | 상환 스케줄 |
 
-**돈이 움직이는 네 API — 이체, 대출 실행, 회차 상환, 전액 중도상환 — 에 `Idempotency-Key` 헤더가 필수**입니다. 없으면 400입니다. 입금·출금에는 아직 걸지 않았습니다(같은 실행기로 감싸면 되는 개선 후보).
+**돈이 움직이는 여섯 API — 입금, 출금, 이체, 대출 실행, 회차 상환, 전액 중도상환 — 에 `Idempotency-Key` 헤더가 필수**입니다. 없으면 400입니다. 대출 실행 응답에는 상환 스케줄을 담지 않습니다(멱등 응답 칸 크기, 0-4) — `GET /{loanId}/schedules`로 조회합니다.
 
-**Swagger에서 시험할 때**: **Authorize**에 로그인 응답의 `accessToken` 값만 붙여 넣습니다(`Bearer `는 자동). 모든 컨트롤러가 보안 이름 상수 하나(`SwaggerConfig.SECURITY_SCHEME_NAME`)를 쓰고, 이름이 어긋나면 `SwaggerSecurityNameTest`가 실패합니다. 2026-11-25 전에는 대출 컨트롤러 3개가 `bearerAuth`(소문자 b)를 써서, Swagger에서 대출 API만 토큰 없이 나가 401이 났습니다.
+**Swagger에서 시험할 때**: **Authorize**에 로그인 응답의 `accessToken` 값만 붙여 넣습니다(`Bearer `는 자동). `SwaggerConfig`의 전역 보안 요구사항 하나가 모든 API에 토큰을 붙입니다. 2026-11-25 전에는 대출 컨트롤러 3개가 따로 단 보안 이름이 `bearerAuth`(소문자 b)여서 대출 API만 토큰 없이 나가 401이 났고, 11-26에 컨트롤러마다 따로 다는 것을 없앴습니다(이름을 맞추던 가드 테스트도 함께 삭제).
 
 ## A-7. 프론트엔드에서 멱등키 다루기 — 공통 모듈 하나로
 
