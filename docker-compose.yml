@@ -18,8 +18,9 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD:?.env에 DB_PASSWORD를 채우세요 (cp .env.example .env)}
       TZ: Asia/Seoul
     ports:
+      # 내 컴퓨터(127.0.0.1)에만 연다 — 앞에 주소를 안 붙이면 같은 와이파이의 다른 기기에서도 접속을 시도할 수 있다
       # 호스트 포트가 다른 프로세스에 물려 있으면 MYSQL_HOST_PORT=3307 docker compose up 처럼 바꿔서 실행
-      - "${MYSQL_HOST_PORT:-3306}:3306"
+      - "127.0.0.1:${MYSQL_HOST_PORT:-3306}:3306"
     volumes:
       # 스키마 두 개(개발용/테스트용)를 최초 기동 시 생성
       - ./docker/mysql-init:/docker-entrypoint-initdb.d
@@ -50,7 +51,7 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?.env에 JWT_SECRET_KEY를 채우세요 (cp .env.example .env)}
       TZ: Asia/Seoul
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
 
 volumes:
   finbank-mysql-data:

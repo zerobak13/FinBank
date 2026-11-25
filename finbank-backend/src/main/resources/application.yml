@@ -45,6 +45,11 @@ spring:
 server:
   port: 8080
 
+app:
+  cors:
+    # 화면 주소 — 정확히 일치하는 주소만 허용한다. 배포 환경은 CORS_ALLOWED_ORIGINS(쉼표로 구분)로 바꾼다
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://finbank-frontend.vercel.app,http://localhost:5173,http://127.0.0.1:5173}
+
 jwt:
   # JWT 시크릿 키도 보안상 매우 중요하므로 변수화합니다.
   secret: ${JWT_SECRET_KEY}

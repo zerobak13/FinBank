@@ -11,4 +11,3 @@ CREATE DATABASE IF NOT EXISTS finbank_test
 -- 애플리케이션 계정에 두 스키마 권한 부여
 GRANT ALL PRIVILEGES ON finbank.* TO 'finuser'@'%';
 GRANT ALL PRIVILEGES ON finbank_test.* TO 'finuser'@'%';
-FLUSH PRIVILEGES;

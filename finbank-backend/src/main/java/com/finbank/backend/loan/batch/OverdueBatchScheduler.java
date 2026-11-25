@@ -11,12 +11,16 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 
 /**
  * 연체 정산 배치 트리거 — 매일 02:00, <b>감지 → 가산</b> 순서로 실행한다.
  *
  * <p>순서가 중요하다. 오늘 새로 연체된 회차는 감지 배치가 이력을 만들어야 가산 대상이 된다.
  * 반대로 돌리면 오늘 연체된 건은 하루를 건너뛰고 내일부터 이자가 붙는다.</p>
+ *
+ * <p><b>시간대는 한국으로 고정한다.</b> 서버 기본 시간대(클라우드는 보통 UTC)를 따르면 02:00이 한국 11:00이 되고,
+ * 한국 시간 00시~09시에는 기준일이 하루 전 날짜가 된다.</p>
  *
  * <p><b>한계를 먼저 적는다</b>: {@code @Scheduled}는 인스턴스마다 독립적으로 돈다.
  * 서버를 2대로 늘리면 같은 배치가 동시에 두 번 트리거된다. 지금 안전한 이유는 단일 인스턴스 배포이고,
@@ -33,6 +37,8 @@ public class OverdueBatchScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(OverdueBatchScheduler.class);
 
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Seoul");
+
     private final JobLauncher jobLauncher;
     private final Job overdueDetectionJob;
     private final Job overdueInterestAccrualJob;
@@ -45,9 +51,9 @@ public class OverdueBatchScheduler {
         this.overdueInterestAccrualJob = overdueInterestAccrualJob;
     }
 
-    @Scheduled(cron = "0 0 2 * * *")
+    @Scheduled(cron = "0 0 2 * * *", zone = "Asia/Seoul")
     public void runDailyOverdueSettlement() {
-        LocalDate baseDate = LocalDate.now();
+        LocalDate baseDate = LocalDate.now(BUSINESS_ZONE);
 
         // 파라미터를 기준일 하나로 두는 것은 의도적이다. Spring Batch는 "같은 파라미터 = 같은 JobInstance"로
         // 보고 이미 완료된 인스턴스의 재실행을 거부하므로, 같은 날 두 번 트리거되면 두 번째는 프레임워크가 막는다.

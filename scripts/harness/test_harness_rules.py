@@ -1,7 +1,7 @@
 """하네스 가드 단위 테스트.
 
 실행: python3 -m unittest discover -s scripts/harness -p 'test_*.py'
-(CI의 harness-guard 워크플로가 같은 명령으로 돌린다)
+(CI의 ci.yml '하네스 가드 단위 테스트'가 같은 명령으로 돌린다)
 """
 import json
 import os

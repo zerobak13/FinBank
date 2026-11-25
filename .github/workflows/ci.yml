@@ -12,6 +12,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: 백엔드 빌드 · 테스트
@@ -107,3 +110,15 @@ jobs:
       - name: 테스트 (node:test — API 클라이언트·금액 입력 파서)
         working-directory: finbank-frontend
         run: npm test
+
+  harness:
+    name: 하네스 가드 단위 테스트
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # PR에서 고친 가드 코드는 여기서 검증된다 (판정 기준 변경 검사는 harness-guard.yml이 기준 브랜치 코드로 한다)
+      - name: 가드 규칙 단위 테스트
+        run: python3 -m unittest discover -s scripts/harness -p 'test_*.py' -v
