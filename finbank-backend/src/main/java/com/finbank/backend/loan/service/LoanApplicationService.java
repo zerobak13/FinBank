@@ -7,6 +7,7 @@ import com.finbank.backend.exception.BusinessException;
 import com.finbank.backend.exception.ErrorCode;
 import com.finbank.backend.exception.ForbiddenException;
 import com.finbank.backend.exception.NotFoundException;
+import com.finbank.backend.loan.domain.ApplicationStatus;
 import com.finbank.backend.loan.domain.LoanApplication;
 import com.finbank.backend.loan.domain.LoanProduct;
 import com.finbank.backend.loan.domain.ProductStatus;
@@ -124,10 +125,20 @@ public class LoanApplicationService {
         return LoanApplicationResponse.from(getOwnApplication(id));
     }
 
-    /** 신청 취소 (본인 것만, 실행 전만 — 전이 검증은 도메인이 수행) */
+    /**
+     * 신청 취소 (본인 것만, 실행 전만).
+     *
+     * <p>조건부 UPDATE 한 문장으로 바꾼다({@link LoanApplicationRepository#cancelIfCancelable}).
+     * 엔티티를 읽어 바꾸면, 같은 신청의 실행이 그 사이 끝났을 때 EXECUTED를 CANCELED로 덮어쓴다.</p>
+     */
     @Transactional
     public void cancel(Long id) {
-        getOwnApplication(id).cancel();
+        getOwnApplication(id);   // 존재·소유권 확인 (404/403)
+        if (loanApplicationRepository.cancelIfCancelable(id) == 0) {
+            ApplicationStatus current = ApplicationStatus.valueOf(loanApplicationRepository.findCurrentStatus(id));
+            throw new BusinessException(ErrorCode.INVALID_STATE,
+                    "현재 상태(" + current.label() + ")에서는 취소할 수 없습니다.");
+        }
     }
 
     /**

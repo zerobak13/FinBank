@@ -38,7 +38,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 청크 사이즈별 배치 처리시간 비교 — D단계의 숫자.
+ * 청크 사이즈별 배치 처리시간 비교 ({@code perf} 태그 — 기본 테스트 실행에서는 빠진다).
  *
  * <p>청크 크기는 "한 트랜잭션에 몇 건을 묶을 것인가"다. 크게 잡으면 커밋 횟수가 줄어 빨라지지만,
  * 실패 시 되돌아가는 범위가 커지고 메모리에 올려두는 엔티티도 늘어난다.

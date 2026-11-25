@@ -40,7 +40,11 @@ import java.util.Optional;
  * <p><b>락 순서 규칙(전역)</b>: 자원 유형 간에는 항상 {@code Account → LoanAccount} 순으로 잠근다.
  * 이체의 "ID 오름차순" 규칙과 같은 목적이다 — 두 요청이 서로가 쥔 락을 기다리는 상황을 원천 차단한다.
  * 그래서 대출을 먼저 읽어야 알 수 있는 연결계좌 ID는 <b>엔티티가 아니라 ID만</b> 프로젝션으로 읽는다
- * (엔티티를 먼저 읽으면 1차 캐시 때문에 뒤이은 락 조회가 낡은 값을 돌려준다 — Phase A의 교훈).</p>
+ * (엔티티를 먼저 읽으면 1차 캐시 때문에 뒤이은 락 조회가 낡은 값을 돌려준다 — 계좌 동시성 테스트에서 확인한 함정).
+ * 락보다 먼저 하는 일은 소유자 확인이다 — 남의 대출 번호로 온 요청이 그 사람의 계좌·대출을 잠그지 못하게.</p>
+ *
+ * <p><b>연체 배치와 겹칠 때</b>: 연체 이력과 남은 연체 회차는 잠금 조회로 읽는다. 일반 조회는 트랜잭션
+ * 첫 조회 시점의 스냅샷이라, 그 뒤에 배치가 가산한 연체이자나 연체로 바꾼 회차를 못 볼 수 있다.</p>
  *
  * <p><b>이중 상환 방어의 핵심은 조건부 UPDATE다.</b> MySQL 기본 격리수준(REPEATABLE READ)에서
  * 일반 SELECT는 트랜잭션 시작 시점의 스냅샷을 읽는다. 락을 기다렸다 통과한 두 번째 요청이
@@ -83,8 +87,9 @@ public class LoanRepaymentProcessor {
     // ── 회차 상환 ─────────────────────────────────────────────────
     @Transactional
     public RepaymentResponse repay(Long loanId, Long memberId, Integer requestedInstallmentNo, String idempotencyKey) {
+        assertLoanOwner(loanId, memberId);
         Account account = lockLinkedAccount(loanId);
-        LoanAccount loan = lockLoan(loanId, memberId);
+        LoanAccount loan = lockLoan(loanId);
 
         if (loan.getStatus() == LoanAccountStatus.PAID_OFF) {
             throw new BusinessException(ErrorCode.INVALID_STATE, "이미 완납된 대출입니다.");
@@ -110,8 +115,9 @@ public class LoanRepaymentProcessor {
         BigDecimal principal = target.getPrincipalAmount();
         BigDecimal interest = target.getInterestAmount();
 
-        // 연체 회차면 가산 배치가 쌓아 둔 연체이자까지 한 번에 받는다 (연체가 아니면 이력이 없어 0원)
-        Optional<OverdueHistory> overdue = overdueHistoryRepository.findByScheduleIdAndResolvedAtIsNull(target.getId());
+        // 연체 회차면 가산 배치가 쌓아 둔 연체이자까지 한 번에 받는다 (연체가 아니면 이력이 없어 0원).
+        // 잠금 조회 — 방금 가산된 금액까지 읽고, 상환이 끝날 때까지 가산 배치가 이 이력을 건드리지 못한다
+        Optional<OverdueHistory> overdue = overdueHistoryRepository.lockOpenByScheduleId(target.getId());
         BigDecimal penalty = overdue.map(OverdueHistory::getPenaltyAccrued)
                 .map(MoneyPolicy::toWon)
                 .orElse(BigDecimal.ZERO);
@@ -123,9 +129,10 @@ public class LoanRepaymentProcessor {
         overdue.ifPresent(history -> history.resolve(LocalDate.now()));
         resolveOverdueIfCleared(loan);
 
-        // 원장은 상환 한 건 = 한 줄 = 계좌 출금액. 연체이자는 이자 부분에 합산한다 (중도상환 수수료와 같은 방식)
+        // 원장은 상환 한 건 = 한 줄 = 계좌 출금액. 정상이자와 연체이자는 칸을 나눠 적는다
+        // (가산 배치가 남긴 OVERDUE_INTEREST는 발생, 여기 연체이자 부분은 수납 — 둘을 더하지 않는다)
         loanTransactionRepository.save(
-                LoanTransaction.repayment(loan, principal, interest.add(penalty), idempotencyKey));
+                LoanTransaction.repayment(loan, principal, interest, penalty, idempotencyKey));
 
         RepaymentResponse response = new RepaymentResponse(
                 loan.getId(),
@@ -147,11 +154,13 @@ public class LoanRepaymentProcessor {
     // ── 전액 중도상환 ──────────────────────────────────────────────
     @Transactional
     public RepaymentResponse prepayAll(Long loanId, Long memberId, String idempotencyKey) {
+        assertLoanOwner(loanId, memberId);
         Account account = lockLinkedAccount(loanId);
-        LoanAccount loan = lockLoan(loanId, memberId);
+        LoanAccount loan = lockLoan(loanId);
 
         if (loan.getStatus() != LoanAccountStatus.ACTIVE) {
-            // 연체 중 대출은 연체이자 정산(D단계 배치)이 선행되어야 한다 — 지금은 명시적으로 거부한다.
+            // 연체 중 전액 중도상환은 아직 지원하지 않는다 — 원금·이자·연체이자 중 무엇부터 채울지(충당 순서)를
+            // 먼저 정해야 해서, 연체 회차를 먼저 상환하도록 명시적으로 거부한다.
             throw new BusinessException(ErrorCode.INVALID_STATE,
                     "전액 중도상환은 정상(ACTIVE) 대출만 가능합니다. (현재 상태: " + loan.getStatus() + ")");
         }
@@ -198,6 +207,15 @@ public class LoanRepaymentProcessor {
 
     // ── 공통 ─────────────────────────────────────────────────────
 
+    /** 락보다 먼저: 소유자 확인 (프로젝션 — 엔티티를 1차 캐시에 올리지 않는다). 대출이 없으면 404, 남의 것이면 403 */
+    private void assertLoanOwner(Long loanId, Long memberId) {
+        Long ownerId = loanAccountRepository.findOwnerIdById(loanId)
+                .orElseThrow(() -> new NotFoundException("대출을 찾을 수 없습니다: " + loanId));
+        if (!ownerId.equals(memberId)) {
+            throw new ForbiddenException("본인의 대출만 상환할 수 있습니다.");
+        }
+    }
+
     /** 락 순서 ①: 연결 입출금 계좌 (ID만 먼저 읽고, 엔티티는 락 조회가 첫 조회가 되게 한다) */
     private Account lockLinkedAccount(Long loanId) {
         Long accountId = loanAccountRepository.findLinkedAccountIdById(loanId)
@@ -206,14 +224,10 @@ public class LoanRepaymentProcessor {
                 .orElseThrow(() -> new NotFoundException("연결 계좌를 찾을 수 없습니다: " + accountId));
     }
 
-    /** 락 순서 ②: 대출 원장 */
-    private LoanAccount lockLoan(Long loanId, Long memberId) {
-        LoanAccount loan = loanAccountRepository.findWithLockingById(loanId)
+    /** 락 순서 ②: 대출 (소유자는 락 전에 확인했다) */
+    private LoanAccount lockLoan(Long loanId) {
+        return loanAccountRepository.findWithLockingById(loanId)
                 .orElseThrow(() -> new NotFoundException("대출을 찾을 수 없습니다: " + loanId));
-        if (!loan.getMember().getId().equals(memberId)) {
-            throw new ForbiddenException("본인의 대출만 상환할 수 있습니다.");
-        }
-        return loan;
     }
 
     /**
@@ -243,12 +257,12 @@ public class LoanRepaymentProcessor {
         return String.format(Locale.KOREA, "%,d원", MoneyPolicy.toWon(amount).toBigInteger());
     }
 
-    /** 연체 회차가 모두 정리되면 대출을 정상으로 되돌린다 */
+    /** 연체 회차가 모두 정리되면 대출을 정상으로 되돌린다 (남은 연체 회차는 잠금 조회 — 최신 커밋본으로 판정) */
     private void resolveOverdueIfCleared(LoanAccount loan) {
         if (loan.getStatus() != LoanAccountStatus.OVERDUE) {
             return;
         }
-        if (repaymentScheduleRepository.countByLoanAccountAndStatusIn(loan, List.of(ScheduleStatus.OVERDUE)) == 0) {
+        if (repaymentScheduleRepository.lockOverdueScheduleIds(loan.getId()).isEmpty()) {
             loan.resolveOverdue();
         }
     }

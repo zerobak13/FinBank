@@ -9,6 +9,7 @@ import com.finbank.backend.exception.BusinessException;
 import com.finbank.backend.exception.ErrorCode;
 import com.finbank.backend.exception.ForbiddenException;
 import com.finbank.backend.exception.NotFoundException;
+import com.finbank.backend.loan.domain.ApplicationStatus;
 import com.finbank.backend.loan.domain.LoanAccount;
 import com.finbank.backend.loan.domain.LoanApplication;
 import com.finbank.backend.loan.domain.LoanTransaction;
@@ -84,8 +85,7 @@ public class LoanExecutionProcessor {
         // ① 조건부 전이: APPROVED인 지금 이 순간에만 1행이 갱신된다.
         //    (엔티티를 읽어 if로 검사하면 동시 요청 둘 다 통과한다 — check-then-act 함정)
         if (loanApplicationRepository.markExecutedIfApproved(applicationId) == 0) {
-            throw new BusinessException(ErrorCode.ALREADY_EXECUTED,
-                    "실행할 수 없는 신청입니다. (현재 상태: " + application.getStatus() + ")");
+            throw notExecutable(applicationId);
         }
 
         // 입금 계좌는 락 조회를 첫 조회로 — 락 이전의 낡은 잔액을 읽지 않게 한다.
@@ -102,7 +102,7 @@ public class LoanExecutionProcessor {
         LoanAccount loan = loanAccountRepository.save(
                 LoanAccount.execute(application, linkedAccount, executedAt));
 
-        // ③ 상환 스케줄 전 회차 확정 생성 (C2 이자 엔진)
+        // ③ 상환 스케줄 전 회차 확정 생성 (계산 엔진 — 순수 자바)
         List<RepaymentSchedule> schedules = generateSchedules(loan, application.getTermMonths(), executedAt);
         repaymentScheduleRepository.saveAll(schedules);
 
@@ -122,6 +122,20 @@ public class LoanExecutionProcessor {
         // ⑥ 멱등 응답 확정 — 위의 모든 변경과 같은 커밋에 묶인다.
         idempotentExecutor.complete(idempotencyKey, response);
         return response;
+    }
+
+    /**
+     * 실행 전이가 0행일 때 — 이유를 최신 상태로 알린다. 이미 실행됐으면 ALREADY_EXECUTED,
+     * 취소·탈락처럼 실행할 수 없는 상태면 INVALID_STATE. 앞에서 읽어 둔 엔티티는 스냅샷이라 틀릴 수 있어
+     * 공유 잠금 조회로 지금 상태를 다시 읽는다.
+     */
+    private BusinessException notExecutable(Long applicationId) {
+        ApplicationStatus current = ApplicationStatus.valueOf(loanApplicationRepository.findCurrentStatus(applicationId));
+        if (current == ApplicationStatus.EXECUTED) {
+            return new BusinessException(ErrorCode.ALREADY_EXECUTED);
+        }
+        return new BusinessException(ErrorCode.INVALID_STATE,
+                "실행할 수 없는 신청입니다. (현재 상태: " + current.label() + ")");
     }
 
     /**

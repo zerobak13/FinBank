@@ -16,7 +16,8 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class SwaggerConfig {
 
-    private static final String SECURITY_SCHEME_NAME = "BearerAuth";
+    /** 보안 스킴 이름 — 컨트롤러의 {@code @SecurityRequirement}도 이 상수를 쓴다 (대소문자까지 같아야 토큰이 붙는다) */
+    public static final String SECURITY_SCHEME_NAME = "BearerAuth";
 
     @Bean
     public OpenAPI openAPI() {
@@ -35,8 +36,8 @@ public class SwaggerConfig {
                         금융 거래 무결성과 동시성 제어를 중심으로 설계한 백엔드 API입니다.
 
                         **인증 방법**
-                        1. `/api/auth/login` 으로 로그인 후 token 값을 복사합니다.
-                        2. 우측 상단 **Authorize** 버튼 클릭 후 `Bearer {token}` 형식으로 입력합니다.
+                        1. `/api/auth/login`으로 로그인해 응답의 `accessToken` 값을 복사합니다.
+                        2. 오른쪽 위 **Authorize** 버튼을 눌러 그 값만 붙여 넣습니다 (`Bearer `는 자동으로 붙습니다).
                         """)
                 .version("1.0.0")
                 .contact(new Contact()

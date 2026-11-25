@@ -227,6 +227,20 @@ class TransferRuleTest {
     }
 
     @Test
+    @DisplayName("입금·출금 금액은 원 단위 정수, 상한 이하 — 0.5원·16자리 금액은 INVALID_AMOUNT, 락도 걸지 않는다")
+    void depositWithdraw_invalidAmount_rejectedBeforeLock() {
+        BusinessException fractional = assertThrows(BusinessException.class,
+                () -> accountService.deposit(1L, new BigDecimal("0.5")));
+        assertEquals(ErrorCode.INVALID_AMOUNT, fractional.getErrorCode());
+
+        BusinessException tooLarge = assertThrows(BusinessException.class,
+                () -> accountService.withdraw(1L, new BigDecimal("1000000000000000")));
+        assertEquals(ErrorCode.INVALID_AMOUNT, tooLarge.getErrorCode());
+
+        verify(accountRepository, never()).findWithLockingById(any());
+    }
+
+    @Test
     @DisplayName("남의 계좌에서 출금하면 403 — 락을 걸기 전에 거부한다")
     void withdraw_notMyAccount_rejectedBeforeLock() {
         when(accountRepository.findOwnerIdById(10L)).thenReturn(Optional.of(999L));

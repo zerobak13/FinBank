@@ -79,9 +79,4 @@ public class Account {
     public void lock() {
         this.locked = true;
     }
-
-    /** 계좌 잠금 해제 */
-    public void unlock() {
-        this.locked = false;
-    }
 }

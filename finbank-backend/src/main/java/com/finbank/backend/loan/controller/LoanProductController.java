@@ -1,5 +1,6 @@
 package com.finbank.backend.loan.controller;
 
+import com.finbank.backend.config.SwaggerConfig;
 import com.finbank.backend.loan.dto.LoanProductResponse;
 import com.finbank.backend.loan.service.LoanApplicationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,7 +14,7 @@ import java.util.List;
 
 /** 대출 상품 조회 API */
 @Tag(name = "Loan Products", description = "대출 상품 조회")
-@SecurityRequirement(name = "bearerAuth")
+@SecurityRequirement(name = SwaggerConfig.SECURITY_SCHEME_NAME)
 @RestController
 @RequestMapping("/api/loans/products")
 public class LoanProductController {

@@ -164,7 +164,7 @@ class LoanExecutionServiceTest {
     }
 
     @Test
-    @DisplayName("승인되지 않은 신청(취소됨)은 실행할 수 없다 → 409")
+    @DisplayName("취소된 신청은 실행할 수 없다 → 409 INVALID_STATE (이미 실행된 경우와 코드로 구분)")
     void execute_notApproved_conflict() {
         Long applicationId = applyApproved();
         loanApplicationService.cancel(applicationId);
@@ -172,7 +172,7 @@ class LoanExecutionServiceTest {
         assertThatThrownBy(() -> loanExecutionService.execute(applicationId, UUID.randomUUID().toString()))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
-                .isEqualTo(ErrorCode.ALREADY_EXECUTED);
+                .isEqualTo(ErrorCode.INVALID_STATE);
     }
 
     @Test
@@ -197,10 +197,10 @@ class LoanExecutionServiceTest {
         assertThatThrownBy(() -> loanExecutionService.execute(applicationId, key))
                 .isInstanceOf(BusinessException.class);
 
-        // 같은 키로 다시 시도해도 "처리 중(409)"에 갇히지 않고 원래 원인(409 ALREADY_EXECUTED)이 그대로 나온다
+        // 같은 키로 다시 시도해도 "처리 중(409)"에 갇히지 않고 원래 원인(409 INVALID_STATE — 취소된 신청)이 그대로 나온다
         assertThatThrownBy(() -> loanExecutionService.execute(applicationId, key))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
-                .isEqualTo(ErrorCode.ALREADY_EXECUTED);
+                .isEqualTo(ErrorCode.INVALID_STATE);
     }
 }

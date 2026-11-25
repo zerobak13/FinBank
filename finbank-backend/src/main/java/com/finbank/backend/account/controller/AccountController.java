@@ -1,5 +1,6 @@
 package com.finbank.backend.account.controller;
 
+import com.finbank.backend.config.SwaggerConfig;
 import com.finbank.backend.account.dto.*;
 import com.finbank.backend.common.PageResponse;
 import com.finbank.backend.account.service.AccountService;
@@ -27,7 +28,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/accounts")
 @Tag(name = "계좌 (Account)", description = "계좌 생성, 조회, 입출금, 이체 API. 모든 요청에 JWT 인증이 필요합니다.")
-@SecurityRequirement(name = "BearerAuth")
+@SecurityRequirement(name = SwaggerConfig.SECURITY_SCHEME_NAME)
 public class AccountController {
 
     private static final String IDEMPOTENCY_KEY = "Idempotency-Key";

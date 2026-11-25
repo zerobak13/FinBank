@@ -3,8 +3,15 @@ package com.finbank.backend.exception;
 import com.finbank.backend.exception.ApiError;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.mock.http.MockHttpInputMessage;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -51,5 +58,38 @@ class GlobalExceptionHandlerTest {
         ResponseEntity<ApiError> numbering =
                 handler.handleBusiness(new BusinessException(ErrorCode.ACCOUNT_NUMBER_GENERATION_FAILED));
         assertThat(numbering.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @Test
+    @DisplayName("요청이 잘못된 경우는 500이 아니다 — 없는 주소 404, 지원하지 않는 요청 방식 405, 빠진 파라미터 400")
+    void framework_client_errors_are_not_500() {
+        ResponseEntity<ApiError> notFound =
+                handler.handleException(new NoResourceFoundException(HttpMethod.GET, "api/nope"));
+        assertThat(notFound.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(notFound.getBody().getCode()).isEqualTo("HTTP_404");
+
+        assertThat(handler.handleException(new HttpRequestMethodNotSupportedException("PUT")).getStatusCode())
+                .isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+
+        ResponseEntity<ApiError> missing = handler.handleMissingParameter(
+                new MissingServletRequestParameterException("amount", "BigDecimal"));
+        assertThat(missing.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(missing.getBody().getMessage()).isEqualTo("amount 값이 필요합니다.");
+    }
+
+    @Test
+    @DisplayName("읽을 수 없는 본문·형식이 틀린 경로 값은 400, 예상하지 못한 예외만 500")
+    void unreadable_body_and_type_mismatch_are_400() {
+        assertThat(handler.handleUnreadableBody(new HttpMessageNotReadableException(
+                "깨진 JSON", new MockHttpInputMessage(new byte[0]))).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        ResponseEntity<ApiError> mismatch = handler.handleTypeMismatch(
+                new MethodArgumentTypeMismatchException("abc", Long.class, "id", null, null));
+        assertThat(mismatch.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(mismatch.getBody().getMessage()).isEqualTo("id 값의 형식이 올바르지 않습니다.");
+
+        assertThat(handler.handleException(new IllegalStateException("예상하지 못한 오류")).getStatusCode())
+                .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }

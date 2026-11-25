@@ -1,5 +1,5 @@
 ---
-title: FinBank ERD — Flyway V1~V7 기준 11개 표
+title: FinBank ERD — Flyway V1~V8 기준 11개 표
 config:
   layout: elk
   theme: base
@@ -18,7 +18,7 @@ config:
     useMaxWidth: false
 ---
 %% FinBank ERD — 전체 컬럼 (README의 finbank_erd.png)
-%% 기준: Flyway V1~V7 (finbank-backend/src/main/resources/db/migration)
+%% 기준: Flyway V1~V8 (finbank-backend/src/main/resources/db/migration)
 %% 표기: 설명에 NULL이 적힌 컬럼만 NULL 허용, 나머지는 NOT NULL
 %%       실선 = FK, 점선 = FK 없는 논리 연결
 %% 그림 만들기: docs/erd/render.sh
@@ -109,9 +109,10 @@ erDiagram
         bigint id PK
         bigint loan_account_id FK "대출 계약"
         varchar(20) type "EXECUTION / REPAYMENT / PREPAYMENT / OVERDUE_INTEREST"
-        decimal(19,4) amount "거래 금액"
+        decimal(19,4) amount "거래 금액 (세 부분의 합)"
         decimal(19,4) principal_portion "원금 부분"
-        decimal(19,4) interest_portion "이자 부분"
+        decimal(19,4) interest_portion "약정 이자 부분"
+        decimal(19,4) penalty_portion "연체이자 부분 (V8)"
         decimal(19,4) balance_after "거래 직후 미상환 원금"
         varchar(64) idempotency_key UK "멱등키 (연체이자는 NULL)"
         datetime(6) created_at

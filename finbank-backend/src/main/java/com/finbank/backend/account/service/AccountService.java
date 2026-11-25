@@ -17,8 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
 import com.finbank.backend.common.PageResponse;
+import com.finbank.backend.common.PagingPolicy;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
@@ -88,7 +88,7 @@ public class AccountService {
         Member member = currentMemberProvider.current();
 
         Account account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+                .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다: " + accountId));
 
         if (!account.getMember().getId().equals(member.getId())) {
             throw new ForbiddenException("본인 계좌만 조회할 수 있습니다.");
@@ -99,20 +99,17 @@ public class AccountService {
 
     @Transactional(readOnly = true)
     public PageResponse<TransactionLogResponse> getAccountTransactions(Long accountId, int page, int size) {
+        // 최신순, 같은 시각이면 나중에 생긴 거래가 먼저 (페이지 사이에서 순서가 흔들리지 않게)
+        Pageable pageable = PagingPolicy.of(page, size,
+                Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id")));
         Member member = currentMemberProvider.current();
 
         Account account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+                .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다: " + accountId));
 
         if (!account.getMember().getId().equals(member.getId())) {
             throw new ForbiddenException("본인 계좌만 조회할 수 있습니다.");
         }
-
-        Pageable pageable = PageRequest.of(
-                page,
-                size,
-                Sort.by(Sort.Direction.DESC, "createdAt")
-        );
 
         Page<TransactionLog> logPage = transactionLogRepository.findByAccountPerspective(
                 account,
@@ -128,10 +125,7 @@ public class AccountService {
 
     @Transactional
     public void deposit(Long accountId, BigDecimal amount) {
-        // BigDecimal 비교는 부호 검사(signum)로 — compareTo(ZERO)와 동일하지만 의도가 명확하다.
-        if (amount == null || amount.signum() <= 0) {
-            throw new BusinessException(ErrorCode.INVALID_AMOUNT, "입금 금액은 0보다 커야 합니다.");
-        }
+        validateAmount(amount, "입금");
 
         Member member = currentMemberProvider.current();
 
@@ -157,9 +151,7 @@ public class AccountService {
 
     @Transactional
     public void withdraw(Long accountId, BigDecimal amount) {
-        if (amount == null || amount.signum() <= 0) {
-            throw new BusinessException(ErrorCode.INVALID_AMOUNT, "출금 금액은 0보다 커야 합니다.");
-        }
+        validateAmount(amount, "출금");
 
         Member member = currentMemberProvider.current();
 
@@ -223,9 +215,7 @@ public class AccountService {
     public TransferResponse transfer(TransferRequest request, String idempotencyKey) {
         Member member = currentMemberProvider.current();
 
-        if (request.getAmount() == null || request.getAmount().signum() <= 0) {
-            throw new BusinessException(ErrorCode.INVALID_AMOUNT, "이체 금액은 0보다 커야 합니다.");
-        }
+        validateAmount(request.getAmount(), "이체");
 
         Long fromId = request.getFromAccountId();
 
@@ -290,13 +280,34 @@ public class AccountService {
         return response;
     }
 
+    /** 금액 상한 — 이체·계좌 개설 요청의 {@code @Digits(integer = 15)}와 같다 */
+    private static final BigDecimal MAX_AMOUNT = new BigDecimal("999999999999999");
+
+    /**
+     * 금액 규칙: 0보다 큰 원 단위 정수, 상한 이하.
+     * 이체·계좌 개설은 요청 DTO가 같은 규칙을 검사하지만, 입금·출금은 쿼리 파라미터로 받아서 여기서 막는다
+     * (0.5원이 들어오면 잔액에 화면에 안 보이는 소수가 남는다).
+     */
+    private static void validateAmount(BigDecimal amount, String action) {
+        // BigDecimal 비교는 부호 검사(signum)로 — compareTo(ZERO)와 동일하지만 의도가 명확하다.
+        if (amount == null || amount.signum() <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_AMOUNT, action + " 금액은 0보다 커야 합니다.");
+        }
+        if (amount.stripTrailingZeros().scale() > 0) {
+            throw new BusinessException(ErrorCode.INVALID_AMOUNT, action + " 금액은 원 단위 정수여야 합니다.");
+        }
+        if (amount.compareTo(MAX_AMOUNT) > 0) {
+            throw new BusinessException(ErrorCode.INVALID_AMOUNT, action + " 금액이 허용 범위를 넘습니다.");
+        }
+    }
+
     /**
      * 계좌 소유자를 락 없이 확인한다(프로젝션 — 엔티티를 1차 캐시에 올리지 않는다).
      * 계좌가 없으면 404, 본인 것이 아니면 403.
      */
     private void assertOwner(Long accountId, Member member, String forbiddenMessage) {
         Long ownerId = accountRepository.findOwnerIdById(accountId)
-                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+                .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다: " + accountId));
         if (!ownerId.equals(member.getId())) {
             throw new ForbiddenException(forbiddenMessage);
         }
@@ -305,7 +316,7 @@ public class AccountService {
     /** 비관적 쓰기 락으로 계좌를 적재한다 — 반드시 해당 계좌 엔티티의 첫 조회여야 한다. */
     private Account lockAccount(Long accountId) {
         return accountRepository.findWithLockingById(accountId)
-                .orElseThrow(() -> new NotFoundException("Account not found: " + accountId));
+                .orElseThrow(() -> new NotFoundException("계좌를 찾을 수 없습니다: " + accountId));
     }
 
 

@@ -14,8 +14,12 @@ import java.time.LocalDateTime;
 /**
  * 상환 스케줄 회차 엔티티. 대출 실행 시점에 이자 계산 엔진이 전 회차를 확정 생성한다.
  *
- * <p>동일 회차 이중 상환 방어는 2겹이다:
- * ① 서비스의 조건부 UPDATE(WHERE status='PENDING') ② 이 엔티티의 상태 검사.</p>
+ * <p><b>상태 전이는 전부 리포지토리의 조건부 UPDATE로만 한다</b> — PAID(상환), OVERDUE(연체 감지 배치),
+ * CANCELED(전액 중도상환). 엔티티를 읽어 상태를 바꾸면 REPEATABLE READ 스냅샷 때문에 동시 요청 둘 다
+ * 통과하거나(check-then-act), 배치가 읽어 둔 옛 값으로 다른 요청의 결과를 덮어쓴다.</p>
+ *
+ * <p>동일 회차 이중 상환 방어는 2겹이다: ① 조건부 UPDATE({@code WHERE status IN (PENDING, OVERDUE)})
+ * ② 대출 원장의 멱등키 UNIQUE.</p>
  */
 @Entity
 @Table(name = "repayment_schedules",
@@ -75,15 +79,7 @@ public class RepaymentSchedule {
         return s;
     }
 
-    // 납부 완료(→ PAID)와 중도상환 무효화(→ CANCELED)는 도메인 메서드가 아니라
-    // 리포지토리의 조건부 UPDATE(markPaidIfPayable, cancelPendingByLoanAccountId)로만 전이한다.
-    // 엔티티를 읽어 상태를 바꾸면 REPEATABLE READ 스냅샷 때문에 동시 요청 둘 다 통과할 수 있다(check-then-act).
-
-    /** 연체 전이: PENDING → OVERDUE (배치가 호출) */
-    public void markOverdue() {
-        if (this.status == ScheduleStatus.PENDING) {
-            this.status = ScheduleStatus.OVERDUE;
-        }
-    }
+    // 상태 전이 메서드는 두지 않는다 — markPaidIfPayable, markOverdueIfPending, cancelPendingByLoanAccountId
+    // (RepaymentScheduleRepository)의 조건부 UPDATE로만 바꾼다. 위 클래스 설명 참고.
 
 }

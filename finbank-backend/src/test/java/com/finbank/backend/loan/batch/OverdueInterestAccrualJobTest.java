@@ -5,6 +5,7 @@ import com.finbank.backend.account.repository.AccountRepository;
 import com.finbank.backend.loan.domain.LoanAccount;
 import com.finbank.backend.loan.domain.LoanApplication;
 import com.finbank.backend.loan.domain.LoanProduct;
+import com.finbank.backend.loan.domain.LoanTransaction;
 import com.finbank.backend.loan.domain.LoanTransactionType;
 import com.finbank.backend.loan.domain.OverdueHistory;
 import com.finbank.backend.loan.domain.ProductStatus;
@@ -21,6 +22,7 @@ import com.finbank.backend.loan.service.LoanRepaymentService;
 import com.finbank.backend.member.repository.MemberRepository;
 import com.finbank.backend.support.DatabaseCleaner;
 import com.finbank.backend.support.LoanApplicationFixture;
+import com.finbank.backend.support.OverdueFixture;
 import com.finbank.backend.support.TestAccountNumbers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,14 +35,22 @@ import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -65,6 +75,8 @@ class OverdueInterestAccrualJobTest {
     @Autowired LoanTransactionRepository loanTransactionRepository;
     @Autowired LoanRepaymentService loanRepaymentService;
     @Autowired DatabaseCleaner cleaner;
+    @Autowired OverdueFixture overdueFixture;
+    @Autowired PlatformTransactionManager transactionManager;
 
     private static final String EMAIL = "accrual@test.com";
     private static final LocalDate OVERDUE_START = LocalDate.of(2026, 7, 1);
@@ -88,14 +100,12 @@ class OverdueInterestAccrualJobTest {
 
         loan = loanAccountRepository.saveAndFlush(
                 LoanAccount.execute(application, account, OVERDUE_START.minusMonths(6)));
-        loan.markOverdue();
-        loanAccountRepository.saveAndFlush(loan);
+        overdueFixture.markLoanOverdue(loan.getId());
 
         RepaymentSchedule schedule = repaymentScheduleRepository.saveAndFlush(
                 RepaymentSchedule.of(loan, 1, OVERDUE_START,
                         new BigDecimal("1000000"), new BigDecimal("50000")));
-        schedule.markOverdue();
-        repaymentScheduleRepository.saveAndFlush(schedule);
+        overdueFixture.markScheduleOverdue(schedule.getId());
 
         history = overdueHistoryRepository.saveAndFlush(
                 OverdueHistory.open(schedule, OVERDUE_START));
@@ -142,7 +152,12 @@ class OverdueInterestAccrualJobTest {
         OverdueHistory result = reload();
         assertThat(result.getPenaltyAccrued()).isEqualByComparingTo(expectedPenalty(10));
         assertThat(result.getLastAccruedAt()).isEqualTo(OVERDUE_START.plusDays(10));
-        assertThat(penaltyLedger()).hasSize(1);
+        // 원장에는 연체이자 부분에만 적는다 (발생). 약정 이자 칸은 비워 둔다
+        assertThat(penaltyLedger()).singleElement().satisfies(tx -> {
+            assertThat(tx.getPenaltyPortion()).isEqualByComparingTo(expectedPenalty(10));
+            assertThat(tx.getInterestPortion()).isEqualByComparingTo(BigDecimal.ZERO);
+            assertThat(tx.getAmount()).isEqualByComparingTo(tx.getPenaltyPortion());
+        });
     }
 
     @Test
@@ -193,6 +208,85 @@ class OverdueInterestAccrualJobTest {
 
         assertThat(reload().getPenaltyAccrued()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(penaltyLedger()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("읽어 둔 이력이 그 사이 상환으로 닫혔으면 가산하지 않고, 닫힌 이력을 다시 열지도 않는다")
+    void skipsHistoryResolvedAfterRead() {
+        LocalDate baseDate = OVERDUE_START.plusDays(10);
+        OverdueInterestAccrualProcessor processor = new OverdueInterestAccrualProcessor(
+                overdueHistoryRepository, loanAccountRepository, calculator, baseDate);
+        TransactionTemplate batchTx = new TransactionTemplate(transactionManager);
+        TransactionTemplate repaymentTx = new TransactionTemplate(transactionManager);
+        repaymentTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
+        LoanTransaction ledger = batchTx.execute(status -> {
+            // 배치가 청크를 읽어 둔 시점 — 이력이 이 트랜잭션의 1차 캐시에 올라간다
+            OverdueHistory read = overdueHistoryRepository
+                    .findAccrualTargets(baseDate, 0L, PageRequest.of(0, 10)).get(0);
+            // 그 사이 다른 트랜잭션에서 상환이 이력을 닫는다
+            repaymentTx.executeWithoutResult(s -> overdueHistoryRepository.findById(read.getId())
+                    .orElseThrow().resolve(OVERDUE_START.plusDays(9)));
+            return processor.process(read);
+        });
+
+        assertThat(ledger).isNull();
+        assertThat(reload().isResolved()).isTrue();                                   // 다시 열리지 않았다
+        assertThat(reload().getPenaltyAccrued()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(penaltyLedger()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("가산과 상환이 같은 순간에 겹쳐도 데드락 없이 둘 다 끝나고, 상환은 방금 가산된 연체이자까지 걷는다")
+    void accrualAndRepaymentAtTheSameTime_noDeadlock() throws Exception {
+        LocalDate baseDate = OVERDUE_START.plusDays(10);
+        OverdueInterestAccrualProcessor processor = new OverdueInterestAccrualProcessor(
+                overdueHistoryRepository, loanAccountRepository, calculator, baseDate);
+        TransactionTemplate batchTx = new TransactionTemplate(transactionManager);
+        ExecutorService repayer = Executors.newSingleThreadExecutor();
+        try {
+            Future<RepaymentResponse> repayment = batchTx.execute(status -> {
+                OverdueHistory read = overdueHistoryRepository
+                        .findAccrualTargets(baseDate, 0L, PageRequest.of(0, 10)).get(0);
+                LoanTransaction ledger = processor.process(read);   // 대출 → 이력 순서로 잠근다
+
+                // 이 순간 상환이 들어온다 — 계좌 → 대출 → 회차 → 이력 순서로 잠그려 한다
+                Future<RepaymentResponse> started = repayer.submit(() -> repayAs(EMAIL, loan.getId(), 1));
+                pause();   // 상환이 락 대기에 들어갈 시간
+
+                // Writer가 하는 INSERT — 원장의 대출 FK를 확인하느라 대출 행의 공유 락이 필요하다.
+                // 배치가 이력만 잠갔다면 여기서 대출을 쥔 상환을 기다리고, 상환은 이력을 기다려 데드락이 된다
+                loanTransactionRepository.save(ledger);
+                return started;
+            });
+
+            RepaymentResponse res = repayment.get(10, TimeUnit.SECONDS);
+            assertThat(res.penaltyPortion()).isEqualByComparingTo(expectedPenalty(10));
+        } finally {
+            repayer.shutdownNow();
+        }
+        assertThat(reload().isResolved()).isTrue();
+        assertThat(penaltyLedger()).hasSize(1);
+    }
+
+    /** 다른 스레드(= 다른 요청)에서 회원으로 로그인해 회차를 상환한다 */
+    private RepaymentResponse repayAs(String email, Long loanId, int installmentNo) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(email, null, Collections.emptyList()));
+        try {
+            return loanRepaymentService.repay(loanId, installmentNo, UUID.randomUUID().toString());
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    private static void pause() {
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
     }
 
     @Test

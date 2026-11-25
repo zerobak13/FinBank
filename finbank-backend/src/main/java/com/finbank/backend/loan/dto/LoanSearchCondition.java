@@ -12,7 +12,7 @@ import java.time.LocalDate;
  * 대출 검색 조건 — <b>모든 필드가 선택</b>이다.
  *
  * <p>null인 조건은 "제약 없음"으로 취급해 WHERE 절에서 아예 빠진다.
- * 조건 6개면 조합이 64가지인데, 이걸 문자열 JPQL로 조립하면 if문마다 공백·AND를
+ * 조건 7개면 조합이 128가지인데, 이걸 문자열 JPQL로 조립하면 if문마다 공백·AND를
  * 손으로 관리해야 한다. QueryDSL은 null을 반환하는 표현식을 그냥 무시하므로
  * 조합 폭발이 코드에 드러나지 않는다.</p>
  */
@@ -41,10 +41,4 @@ public record LoanSearchCondition(
         @Schema(description = "원금 최대", example = "50000000")
         BigDecimal maxPrincipal
 ) {
-    /** 아무 조건도 없으면 전체 조회 */
-    public boolean isEmpty() {
-        return status == null && repaymentType == null && productId == null
-                && executedFrom == null && executedTo == null
-                && minPrincipal == null && maxPrincipal == null;
-    }
 }

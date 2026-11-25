@@ -1,241 +1,172 @@
 package com.finbank.backend.account.service;
 
 import com.finbank.backend.account.domain.Account;
-import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.account.dto.TransferRequest;
-
-import java.math.BigDecimal;
 import com.finbank.backend.account.repository.AccountRepository;
+import com.finbank.backend.member.domain.Member;
 import com.finbank.backend.member.repository.MemberRepository;
-import com.finbank.backend.auth.repository.RefreshTokenRepository;
-import com.finbank.backend.account.repository.TransactionLogRepository;
+import com.finbank.backend.support.DatabaseCleaner;
+import com.finbank.backend.support.TestAccountNumbers;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.dao.CannotAcquireLockException;
-import org.springframework.dao.DeadlockLoserDataAccessException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * 반대 방향 동시 이체(A→B와 B→A를 같은 순간에) 데드락 회귀 테스트.
+ *
+ * <p>출금 계좌 → 입금 계좌 순서로 락을 걸면 두 요청이 서로 상대가 잡은 행을 기다리고, MySQL이 한쪽을 데드락으로 끊는다.
+ * 지금은 두 계좌를 <b>ID 오름차순</b>으로 잠그므로 데드락이 0건이어야 하고, 두 이체가 모두 성공해야 한다.
+ * 같은 금액을 주고받았으니 매번 두 잔액이 처음과 같아야 한다.</p>
+ */
 @SpringBootTest
 class AccountServiceDeadlockTest {
 
-    @Autowired
-    private AccountService accountService;
+    private static final int REPEAT = 100;
+    private static final BigDecimal INITIAL_BALANCE = new BigDecimal("100000");
+    private static final BigDecimal AMOUNT = new BigDecimal("1000");
 
-    @Autowired
-    private AccountRepository accountRepository;
+    @Autowired AccountService accountService;
+    @Autowired AccountRepository accountRepository;
+    @Autowired MemberRepository memberRepository;
+    @Autowired DatabaseCleaner cleaner;
 
-    @Autowired
-    private MemberRepository memberRepository;
-
-    @Autowired
-    private TransactionLogRepository transactionLogRepository;
-
-    @Autowired
-    private RefreshTokenRepository refreshTokenRepository;
-
-    @Autowired
-    private com.finbank.backend.support.DatabaseCleaner cleaner;
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+        cleaner.clean();
+    }
 
     @Test
-    @DisplayName("현재 transfer 구현은 반대 방향 동시 이체에서 데드락이 발생할 수 있다")
-    void deadlock_can_happen_with_current_transfer() throws Exception {
-        int repeat = 100;
+    @DisplayName("반대 방향 동시 이체 100번 — ID 오름차순 락이라 데드락 0건, 이체는 전부 성공")
+    void oppositeTransfers_noDeadlock_allSucceed() throws Exception {
         int deadlockCount = 0;
-        int successCount = 0;
-        List<String> deadlockMessages = new ArrayList<>();
+        List<String> failures = new ArrayList<>();
 
-        for (int i = 0; i < repeat; i++) {
+        for (int i = 0; i < REPEAT; i++) {
             Scenario scenario = createScenario(i);
 
             Throwable[] results = runOppositeTransfersOnce(scenario);
 
-            boolean deadlockOccurred = false;
-
-            if (isDeadlock(results[0])) {
-                deadlockOccurred = true;
-                deadlockMessages.add(extractRootMessage(results[0]));
+            for (Throwable result : results) {
+                if (result == null) {
+                    continue;
+                }
+                if (isLockFailure(result)) {
+                    deadlockCount++;
+                }
+                failures.add("#" + i + " " + rootMessage(result));
             }
-            if (isDeadlock(results[1])) {
-                deadlockOccurred = true;
-                deadlockMessages.add(extractRootMessage(results[1]));
+            if (results[0] == null && results[1] == null) {
+                assertThat(balanceOf(scenario.accountA())).as("#%d A 잔액", i).isEqualByComparingTo(INITIAL_BALANCE);
+                assertThat(balanceOf(scenario.accountB())).as("#%d B 잔액", i).isEqualByComparingTo(INITIAL_BALANCE);
             }
-
-            if (deadlockOccurred) {
-                deadlockCount++;
-            } else {
-                successCount++;
-            }
-
-            clearSecurityContext();
-            cleanup();
         }
 
-        printSummary(repeat, successCount, deadlockCount, deadlockMessages);
+        System.out.printf("%n[반대 방향 동시 이체] %d회 — 실패 %d건 (락 충돌·데드락 %d건)%n",
+                REPEAT, failures.size(), deadlockCount);
 
-        //assertThat(deadlockCount).isGreaterThan(0);
-        assertThat(deadlockCount).isZero();
+        assertThat(deadlockCount).as("락 충돌·데드락 건수").isZero();
+        assertThat(failures).as("실패한 이체").isEmpty();
     }
 
     private Scenario createScenario(int index) {
-        cleanup();
+        cleaner.clean();
 
-        Member member1 = memberRepository.save(
-                new Member("user1_" + index + "@test.com", "1234", "user1")
-        );
+        Member member1 = memberRepository.save(new Member("user1_" + index + "@test.com", "user1", "1234"));
+        Member member2 = memberRepository.save(new Member("user2_" + index + "@test.com", "user2", "1234"));
 
-        Member member2 = memberRepository.save(
-                new Member("user2_" + index + "@test.com", "1234", "user2")
-        );
-
-        Account accountA = accountRepository.save(
-                new Account(member1, "11111111111" + index, new BigDecimal("100000"))
-        );
-
-        Account accountB = accountRepository.save(
-                new Account(member2, "22222222222" + index, new BigDecimal("100000"))
-        );
+        Account accountA = accountRepository.save(new Account(member1, TestAccountNumbers.next(), INITIAL_BALANCE));
+        Account accountB = accountRepository.save(new Account(member2, TestAccountNumbers.next(), INITIAL_BALANCE));
 
         return new Scenario(member1, member2, accountA, accountB);
     }
 
     private Throwable[] runOppositeTransfersOnce(Scenario scenario) throws Exception {
         ExecutorService executorService = Executors.newFixedThreadPool(2);
-
         CountDownLatch readyLatch = new CountDownLatch(2);
         CountDownLatch startLatch = new CountDownLatch(1);
 
-        Future<Throwable> future1 = executorService.submit(() -> {
-            setAuthentication(scenario.member1().getEmail());
-            readyLatch.countDown();
-            startLatch.await();
-
-            try {
-                accountService.transfer(createTransferRequest(
-                        scenario.accountA().getId(),
-                        scenario.accountB().getAccountNumber(),
-                        1000L
-                ));
-                return null;
-            } catch (Throwable e) {
-                return e;
-            } finally {
-                SecurityContextHolder.clearContext();
-            }
-        });
-
-        Future<Throwable> future2 = executorService.submit(() -> {
-            setAuthentication(scenario.member2().getEmail());
-            readyLatch.countDown();
-            startLatch.await();
-
-            try {
-                accountService.transfer(createTransferRequest(
-                        scenario.accountB().getId(),
-                        scenario.accountA().getAccountNumber(),
-                        1000L
-                ));
-                return null;
-            } catch (Throwable e) {
-                return e;
-            } finally {
-                SecurityContextHolder.clearContext();
-            }
-        });
+        Future<Throwable> aToB = executorService.submit(() -> transferAs(scenario.member1(),
+                new TransferRequest(scenario.accountA().getId(), scenario.accountB().getAccountNumber(), AMOUNT),
+                readyLatch, startLatch));
+        Future<Throwable> bToA = executorService.submit(() -> transferAs(scenario.member2(),
+                new TransferRequest(scenario.accountB().getId(), scenario.accountA().getAccountNumber(), AMOUNT),
+                readyLatch, startLatch));
 
         readyLatch.await();
         startLatch.countDown();
 
-        Throwable ex1 = future1.get(10, TimeUnit.SECONDS);
-        Throwable ex2 = future2.get(10, TimeUnit.SECONDS);
+        Throwable first = aToB.get(10, TimeUnit.SECONDS);
+        Throwable second = bToA.get(10, TimeUnit.SECONDS);
 
         executorService.shutdown();
         executorService.awaitTermination(5, TimeUnit.SECONDS);
 
-        return new Throwable[]{ex1, ex2};
+        return new Throwable[]{first, second};
     }
 
-    private TransferRequest createTransferRequest(Long fromAccountId, String toAccountNumber, long amount) {
-        return new TransferRequest(fromAccountId, toAccountNumber, BigDecimal.valueOf(amount));
+    /** 두 스레드를 같은 순간에 출발시키고, 실패하면 예외를 돌려준다 (성공은 null) */
+    private Throwable transferAs(Member member, TransferRequest request,
+                                 CountDownLatch readyLatch, CountDownLatch startLatch) throws InterruptedException {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(member.getEmail(), null, List.of()));
+        readyLatch.countDown();
+        startLatch.await();
+        try {
+            accountService.transfer(request);
+            return null;
+        } catch (Throwable e) {
+            return e;
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 
-    private void setAuthentication(String email) {
-        UsernamePasswordAuthenticationToken authentication =
-                new UsernamePasswordAuthenticationToken(email, null, List.of());
-        SecurityContextHolder.getContext().setAuthentication(authentication);
+    private BigDecimal balanceOf(Account account) {
+        return accountRepository.findById(account.getId()).orElseThrow().getBalance();
     }
 
-    private void clearSecurityContext() {
-        SecurityContextHolder.clearContext();
-    }
-
-    private boolean isDeadlock(Throwable e) {
-        while (e != null) {
-            if (e instanceof DeadlockLoserDataAccessException ||
-                    e instanceof CannotAcquireLockException) {
+    /** 데드락·락 대기 시간 초과 — 스프링은 둘 다 PessimisticLockingFailureException 계열로 바꿔 던진다 */
+    private boolean isLockFailure(Throwable e) {
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof PessimisticLockingFailureException) {
                 return true;
             }
-
-            String message = e.getMessage();
+            String message = cause.getMessage();
             if (message != null) {
                 String lower = message.toLowerCase();
-                if (lower.contains("deadlock")
-                        || lower.contains("lock wait timeout")
-                        || lower.contains("could not acquire lock")
-                        || lower.contains("try restarting transaction")) {
+                if (lower.contains("deadlock") || lower.contains("lock wait timeout")) {
                     return true;
                 }
             }
-
-            e = e.getCause();
         }
         return false;
     }
 
-    private String extractRootMessage(Throwable e) {
+    private String rootMessage(Throwable e) {
         Throwable root = e;
         while (root.getCause() != null) {
             root = root.getCause();
         }
-        return root.getMessage();
+        return root.getClass().getSimpleName() + ": " + root.getMessage();
     }
 
-    private void printSummary(int repeat, int successCount, int deadlockCount, List<String> deadlockMessages) {
-        System.out.println();
-        System.out.println("==================================================");
-        System.out.println("DEADLOCK TEST SUMMARY");
-        System.out.println("==================================================");
-        System.out.println("Total Iterations : " + repeat);
-        System.out.println("Success Count    : " + successCount);
-        System.out.println("Deadlock Count   : " + deadlockCount);
-        System.out.println("Deadlock Rate    : " + String.format("%.2f", (deadlockCount * 100.0) / repeat) + "%");
-
-        if (!deadlockMessages.isEmpty()) {
-            System.out.println("Sample Message   : " + deadlockMessages.get(0));
-        }
-
-        System.out.println("Result           : " + (deadlockCount > 0 ? "DEADLOCK DETECTED" : "NO DEADLOCK"));
-        System.out.println("==================================================");
-        System.out.println();
-    }
-
-    private void cleanup() {
-        cleaner.clean();
-    }
-
-    private record Scenario(
-            Member member1,
-            Member member2,
-            Account accountA,
-            Account accountB
-    ) {
+    private record Scenario(Member member1, Member member2, Account accountA, Account accountB) {
     }
 }

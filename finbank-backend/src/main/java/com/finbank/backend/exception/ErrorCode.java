@@ -18,6 +18,9 @@ public enum ErrorCode {
     SAME_ACCOUNT_TRANSFER(HttpStatus.BAD_REQUEST, "같은 계좌로는 이체할 수 없습니다."),
     ACCOUNT_LOCKED(HttpStatus.BAD_REQUEST, "잠금된 계좌가 있습니다."),
 
+    // ── 요청 형식 (400) ─────────────────────────────────────────
+    INVALID_PAGE_REQUEST(HttpStatus.BAD_REQUEST, "페이지 번호나 크기가 올바르지 않습니다."),
+
     // ── 멱등키 형식 (400) ───────────────────────────────────────
     IDEMPOTENCY_KEY_REQUIRED(HttpStatus.BAD_REQUEST, "Idempotency-Key 헤더가 필요합니다."),
     IDEMPOTENCY_KEY_TOO_LONG(HttpStatus.BAD_REQUEST, "Idempotency-Key는 64자 이하여야 합니다."),

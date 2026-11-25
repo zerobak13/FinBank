@@ -2,6 +2,7 @@ package com.finbank.backend.loan.batch;
 
 import com.finbank.backend.loan.domain.OverdueHistory;
 import com.finbank.backend.loan.domain.RepaymentSchedule;
+import com.finbank.backend.loan.repository.LoanAccountRepository;
 import com.finbank.backend.loan.repository.OverdueHistoryRepository;
 import com.finbank.backend.loan.repository.RepaymentScheduleRepository;
 import org.slf4j.Logger;
@@ -13,7 +14,6 @@ import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
-import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemWriter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -36,6 +36,9 @@ import java.time.LocalDate;
  * <p><b>청크 단위 커밋</b>: 10만 건을 한 트랜잭션으로 묶으면 마지막 1건이 실패할 때
  * 앞의 99,999건이 되돌아간다. 청크로 끊으면 실패 지점까지는 커밋되어 있고,
  * 재실행 시 남은 것만 처리된다(위의 멱등 덕분에 안전하게 재실행할 수 있다).</p>
+ *
+ * <p><b>상환과 겹칠 때</b>: 상태 전이는 {@link OverdueDetectionProcessor}의 조건부 UPDATE로만 한다.
+ * 읽어 둔 엔티티를 고쳐 쓰면 그 사이 끝난 상환을 덮어쓰기 때문이다.</p>
  */
 @Configuration
 public class OverdueDetectionJobConfig {
@@ -47,11 +50,14 @@ public class OverdueDetectionJobConfig {
 
     private final RepaymentScheduleRepository repaymentScheduleRepository;
     private final OverdueHistoryRepository overdueHistoryRepository;
+    private final LoanAccountRepository loanAccountRepository;
 
     public OverdueDetectionJobConfig(RepaymentScheduleRepository repaymentScheduleRepository,
-                                     OverdueHistoryRepository overdueHistoryRepository) {
+                                     OverdueHistoryRepository overdueHistoryRepository,
+                                     LoanAccountRepository loanAccountRepository) {
         this.repaymentScheduleRepository = repaymentScheduleRepository;
         this.overdueHistoryRepository = overdueHistoryRepository;
+        this.loanAccountRepository = loanAccountRepository;
     }
 
     @Bean
@@ -75,7 +81,7 @@ public class OverdueDetectionJobConfig {
         return new StepBuilder(STEP_NAME, jobRepository)
                 .<RepaymentSchedule, OverdueHistory>chunk(chunkSize, transactionManager)
                 .reader(overdueScheduleReader)
-                .processor(overdueProcessor())
+                .processor(new OverdueDetectionProcessor(repaymentScheduleRepository, loanAccountRepository))
                 .writer(overdueWriter())
                 .build();
     }
@@ -97,19 +103,7 @@ public class OverdueDetectionJobConfig {
         return new OverdueScheduleReader(repaymentScheduleRepository, date, chunkSize);
     }
 
-    /** 회차·대출 상태를 바꾸고 연체이력을 만든다 (상태 전이의 판단은 도메인이 한다) */
-    private ItemProcessor<RepaymentSchedule, OverdueHistory> overdueProcessor() {
-        return schedule -> {
-            schedule.markOverdue();
-            schedule.getLoanAccount().markOverdue();
-            return OverdueHistory.open(schedule, schedule.getDueDate());
-        };
-    }
-
-    /**
-     * 이력만 저장한다. 회차·대출은 이미 영속 상태라 청크 트랜잭션이 커밋될 때
-     * 변경 감지로 함께 반영된다 — save를 호출할 필요가 없다.
-     */
+    /** 이력만 저장한다 — 회차·대출의 상태 전이는 처리 단계의 조건부 UPDATE가 이미 했다. */
     private ItemWriter<OverdueHistory> overdueWriter() {
         return histories -> {
             overdueHistoryRepository.saveAll(histories.getItems());
