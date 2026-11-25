@@ -55,7 +55,7 @@ export default function Layout({
                                 {isRegisterMode && (
                                     <input className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 w-28" placeholder="이름" value={loginName} onChange={(e) => setLoginName(e.target.value)} />
                                 )}
-                                <input className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 w-32" placeholder="비밀번호" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} />
+                                <input className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 w-32" placeholder={isRegisterMode ? "비밀번호 (8자 이상)" : "비밀번호"} type="password" minLength={isRegisterMode ? 8 : undefined} value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} />
                             </div>
                             <div className="flex items-center gap-2">
                                 <button type="button" onClick={() => setIsRegisterMode(v => !v)} className="px-3 py-1.5 rounded-lg border border-slate-600 hover:bg-slate-800">

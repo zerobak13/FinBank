@@ -11,11 +11,11 @@ export const accountApi = {
             method: "POST",
             body: JSON.stringify({ initialDeposit })
         }),
-    deposit: (id, amount) =>
-        client(`/api/accounts/${id}/deposit?amount=${amount}`, { method: "POST" }),
-    withdraw: (id, amount) =>
-        client(`/api/accounts/${id}/withdraw?amount=${amount}`, { method: "POST" }),
-    /** 이체 — key는 사용자 행동 1회당 1개 (재시도에는 같은 키) */
+    /** 입금·출금·이체는 돈이 움직이는 요청 — key는 사용자 행동 1회당 1개 (재시도에는 같은 키) */
+    deposit: (id, amount, key) =>
+        idempotentPost(`/api/accounts/${id}/deposit`, { key, body: { amount } }),
+    withdraw: (id, amount, key) =>
+        idempotentPost(`/api/accounts/${id}/withdraw`, { key, body: { amount } }),
     transfer: (payload, key) =>
         idempotentPost("/api/accounts/transfer", { key, body: payload }),
 };
