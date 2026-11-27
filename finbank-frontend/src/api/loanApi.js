@@ -31,6 +31,8 @@ export const loanApi = {
     /** 전액 중도상환 — 잔여원금 + 경과이자 + 중도상환수수료 */
     prepay: (loanId, key) =>
         idempotentPost(`/api/loans/${loanId}/prepayment`, { key }),
+    /** 전액 중도상환 견적 — 돈은 움직이지 않는다. 확인창에 총액을 보여 주려고 먼저 부른다 */
+    quotePrepayment: (loanId) => client(`/api/loans/${loanId}/prepayment-quote`),
 
     // ── 조회 ─────────────────────────────────────────
     getMyLoans: () => client("/api/loans"),

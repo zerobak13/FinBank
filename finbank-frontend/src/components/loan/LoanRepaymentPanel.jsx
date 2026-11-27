@@ -106,7 +106,7 @@ export default function LoanRepaymentPanel({
                     전액 중도상환
                 </button>
                 <span className="text-[11px] text-slate-500">
-                    연결계좌에서 자동 출금됩니다. 중복 클릭은 멱등키로 차단됩니다.
+                    연결계좌에서 자동 출금됩니다. 응답을 못 받고 다시 눌러도 같은 요청으로 처리돼 두 번 빠지지 않습니다.
                 </span>
             </div>
 

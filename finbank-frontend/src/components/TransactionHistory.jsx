@@ -9,6 +9,12 @@ const TYPE = {
     TRANSFER_OUT: { label: "이체 보냄", outgoing: true },
 };
 
+/**
+ * 서버 거래 로그의 기본 설명 — 유형 이름과 같은 말이라 따로 보여 주지 않는다.
+ * 대출 실행금·상환금처럼 따로 적힌 설명("대출 상환 · 대출 #12 3회차")만 유형 아래에 보인다.
+ */
+const GENERIC_DESCRIPTIONS = new Set(["Deposit", "Withdraw", "Transfer In", "Transfer Out"]);
+
 export default function TransactionHistory({ transactions }) {
     return (
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg min-h-[220px]">
@@ -20,6 +26,9 @@ export default function TransactionHistory({ transactions }) {
                         <div key={t.id} className="flex items-center justify-between px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/40">
                             <div>
                                 <div className="text-xs font-semibold text-slate-200">{type.label}</div>
+                                {t.description && !GENERIC_DESCRIPTIONS.has(t.description) && (
+                                    <div className="text-[11px] text-slate-300">{t.description}</div>
+                                )}
                                 <div className="text-[11px] text-slate-500">{formatDateTime(t.createdAt)}</div>
                             </div>
                             <div className="text-right">

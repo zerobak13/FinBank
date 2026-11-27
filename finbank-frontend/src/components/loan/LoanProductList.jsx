@@ -36,6 +36,11 @@ export default function LoanProductList({ products, selectedId, onSelect }) {
                     <div className="text-xs text-slate-400 space-y-0.5">
                         <div>연 {pct(p.interestRate)}% <span className="text-slate-600">(연체 가산 +{pct(p.overdueExtraRate)}%p)</span></div>
                         <div>{won(p.minAmount)}원 ~ {won(p.maxAmount)}원 · 최대 {p.maxTermMonths}개월</div>
+                        {p.prepaymentFeeRate != null && (
+                            <div className="text-slate-500">
+                                중도상환수수료 {pct(p.prepaymentFeeRate)}% — 대출일부터 3년 안에 갚을 때만, 남은 기간에 비례
+                            </div>
+                        )}
                     </div>
                 </button>
             ))}

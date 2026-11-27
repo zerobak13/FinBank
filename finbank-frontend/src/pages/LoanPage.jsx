@@ -1,15 +1,16 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import LoanProductList from "../components/loan/LoanProductList";
 import LoanApplyForm from "../components/loan/LoanApplyForm";
 import MyLoanList from "../components/loan/MyLoanList";
 import LoanRepaymentPanel from "../components/loan/LoanRepaymentPanel";
-import { loanApi, newIdempotencyKey, LOAN_ERROR_MESSAGE, rejectReasonText } from "../api/loanApi";
+import { loanApi, LOAN_ERROR_MESSAGE, rejectReasonText } from "../api/loanApi";
+import { createKeyRing } from "../api/idempotency";
 
 /**
  * 대출 메뉴 페이지 — 신청 → 실행 → 상환의 전 흐름.
  *
- * 실행·상환은 돈이 움직이는 요청이므로 <b>사용자 행동 1회당 멱등키 1개</b>를 만들어 보낸다.
- * (재시도는 api 레이어가 같은 키로 처리한다 — loanApi.js 참고)
+ * 실행·상환은 돈이 움직이는 요청이므로 <b>같은 행동에는 결과가 확정될 때까지 같은 멱등키</b>를 보낸다
+ * (응답을 못 받고 다시 눌러도 같은 요청 — api/idempotency.js의 createKeyRing). 회차 상환은 회차까지 행동에 넣는다.
  */
 
 const won = (v) => Number(v ?? 0).toLocaleString("ko-KR");
@@ -22,6 +23,7 @@ export default function LoanPage({ auth, accounts = [], loading, setLoading, not
     const [selectedLoanId, setSelectedLoanId] = useState(null);
     const [schedules, setSchedules] = useState([]);
     const [apiReady, setApiReady] = useState(false);
+    const keys = useRef(createKeyRing()).current;   // 사용자가 바뀌면 이 화면이 새로 그려져 키도 새로 시작한다
 
     /** 에러 응답을 사용자 문구로 — 서버 에러 코드가 있으면 그것을 우선한다 */
     const explain = (e) => LOAN_ERROR_MESSAGE[e?.code] ?? e?.message ?? "요청을 처리하지 못했습니다.";
@@ -98,11 +100,9 @@ export default function LoanPage({ auth, accounts = [], loading, setLoading, not
     };
 
     const handleExecute = async (applicationId) => {
-        // 사용자 행동 1회 = 멱등키 1개. 재시도해도 이 키를 그대로 쓴다.
-        const key = newIdempotencyKey();
         try {
             setLoading(true);
-            const res = await loanApi.execute(applicationId, key);
+            const res = await keys.run(`execute:${applicationId}`, (key) => loanApi.execute(applicationId, key));
             notify(`대출 실행 완료 — 계좌 잔액 ${won(res.accountBalanceAfter)}원`, "success");
             setSelectedLoanId(res.loanId);
             await refreshAll(res.loanId);
@@ -115,10 +115,10 @@ export default function LoanPage({ auth, accounts = [], loading, setLoading, not
     };
 
     const handleRepay = async (loanId, installmentNo) => {
-        const key = newIdempotencyKey();
         try {
             setLoading(true);
-            const res = await loanApi.repay(loanId, installmentNo, key);
+            const res = await keys.run(`repay:${loanId}:${installmentNo}`,
+                (key) => loanApi.repay(loanId, installmentNo, key));
             // 연체 회차면 쌓인 연체이자까지 함께 출금된다
             const penaltyNote = Number(res.penaltyPortion ?? 0) > 0
                 ? `, 연체이자 ${won(res.penaltyPortion)}원 포함`
@@ -138,17 +138,31 @@ export default function LoanPage({ auth, accounts = [], loading, setLoading, not
     };
 
     const handlePrepay = async (loanId) => {
-        const loan = loans.find((l) => l.loanId === loanId);
+        // 먼저 견적을 받아 출금될 총액을 보여 준다 (같은 날이면 실제 금액과 같다 — 서버가 같은 계산을 쓴다)
+        let quote;
+        try {
+            setLoading(true);
+            quote = await loanApi.quotePrepayment(loanId);
+        } catch (e) {
+            notify(explain(e), "error");
+            await refreshAll(loanId);
+            return;
+        } finally {
+            setLoading(false);
+        }
+        const feeNote = Number(quote.feePortion ?? 0) > 0
+            ? `중도상환수수료 ${won(quote.feePortion)}원 (${quote.feeFreeFrom}부터는 없음)`
+            : "중도상환수수료 없음";
         const ok = window.confirm(
-            `전액 중도상환하면 잔여 원금 ${won(loan?.balance)}원에\n` +
-            `경과이자와 중도상환수수료가 더해져 한 번에 출금됩니다. 진행할까요?`,
+            `전액 중도상환하면 ${won(quote.totalAmount)}원이 한 번에 출금됩니다.\n` +
+            `원금 ${won(quote.principalPortion)}원 + 경과이자 ${won(quote.interestPortion)}원 + ${feeNote}\n` +
+            `진행할까요?`,
         );
         if (!ok) return;
 
-        const key = newIdempotencyKey();
         try {
             setLoading(true);
-            const res = await loanApi.prepay(loanId, key);
+            const res = await keys.run(`prepay:${loanId}`, (key) => loanApi.prepay(loanId, key));
             notify(
                 `중도상환 완료 — 원금 ${won(res.principalPortion)}원 + 경과이자 ${won(res.interestPortion)}원 ` +
                 `+ 수수료 ${won(res.feePortion)}원 = ${won(res.totalPaid)}원`,
