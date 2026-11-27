@@ -105,7 +105,7 @@ class LoanRepaymentConcurrencyTest {
     @DisplayName("100개 요청이 같은 회차를 동시 상환 → 정확히 1건 성공, 99건 409, 원장 1건, 출금 1회")
     void concurrentRepayment_onlyOneSucceeds() throws InterruptedException {
         BigDecimal balanceBefore = accountBalance();
-        RepaymentScheduleResponse first = loan.schedules().get(0);
+        RepaymentScheduleResponse first = loanQueryService.getSchedules(loan.loanId()).get(0);
 
         Counters counters = runConcurrently(() -> UUID.randomUUID().toString());
 
@@ -122,7 +122,7 @@ class LoanRepaymentConcurrencyTest {
     @DisplayName("같은 멱등키 100개 재시도 동시 도착 → 돈은 한 번만 움직인다 (원장 1건, 출금 1회)")
     void concurrentRetry_sameKey_movesMoneyOnce() throws InterruptedException {
         BigDecimal balanceBefore = accountBalance();
-        RepaymentScheduleResponse first = loan.schedules().get(0);
+        RepaymentScheduleResponse first = loanQueryService.getSchedules(loan.loanId()).get(0);
         String sharedKey = UUID.randomUUID().toString();
 
         Counters counters = runConcurrently(() -> sharedKey);

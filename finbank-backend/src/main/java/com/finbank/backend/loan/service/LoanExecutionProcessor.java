@@ -18,7 +18,6 @@ import com.finbank.backend.loan.domain.RepaymentType;
 import com.finbank.backend.loan.domain.calculator.RepaymentScheduleGenerator;
 import com.finbank.backend.loan.domain.calculator.ScheduleLine;
 import com.finbank.backend.loan.dto.LoanExecutionResponse;
-import com.finbank.backend.loan.dto.RepaymentScheduleResponse;
 import com.finbank.backend.loan.repository.LoanAccountRepository;
 import com.finbank.backend.loan.repository.LoanApplicationRepository;
 import com.finbank.backend.loan.repository.LoanTransactionRepository;
@@ -114,10 +113,8 @@ public class LoanExecutionProcessor {
         // ⑤ 대출 원장 기록 (append-only)
         loanTransactionRepository.save(LoanTransaction.execution(loan, idempotencyKey));
 
-        LoanExecutionResponse response = LoanExecutionResponse.of(
-                loan,
-                linkedAccount.getBalance(),
-                schedules.stream().map(RepaymentScheduleResponse::from).toList());
+        // 응답에는 전 회차 스케줄을 담지 않는다 — 멱등 응답 칸(4000자)을 넘기 때문 (LoanExecutionResponse 참고)
+        LoanExecutionResponse response = LoanExecutionResponse.of(loan, linkedAccount.getBalance());
 
         // ⑥ 멱등 응답 확정 — 위의 모든 변경과 같은 커밋에 묶인다.
         idempotentExecutor.complete(idempotencyKey, response);

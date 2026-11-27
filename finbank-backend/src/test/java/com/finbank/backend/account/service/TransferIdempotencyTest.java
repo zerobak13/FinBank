@@ -45,7 +45,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class TransferIdempotencyTest {
 
-    @Autowired AccountTransferService accountTransferService;
+    @Autowired AccountMoneyService accountMoneyService;
     @Autowired AccountRepository accountRepository;
     @Autowired MemberRepository memberRepository;
     @Autowired TransactionLogRepository transactionLogRepository;
@@ -87,8 +87,8 @@ class TransferIdempotencyTest {
     void sequentialRetry_replaysStoredResponse() {
         String key = UUID.randomUUID().toString();
 
-        TransferResponse first = accountTransferService.transfer(request(AMOUNT), key);
-        TransferResponse second = accountTransferService.transfer(request(AMOUNT), key);
+        TransferResponse first = accountMoneyService.transfer(request(AMOUNT), key);
+        TransferResponse second = accountMoneyService.transfer(request(AMOUNT), key);
 
         assertThat(second).isEqualTo(first);
         assertMovedOnce();
@@ -98,9 +98,9 @@ class TransferIdempotencyTest {
     @DisplayName("같은 키로 금액만 바꿔 보내면 422 (IDEMPOTENCY_KEY_MISMATCH), 두 번째 이체는 없음")
     void sameKeyDifferentAmount_rejected() {
         String key = UUID.randomUUID().toString();
-        accountTransferService.transfer(request(AMOUNT), key);
+        accountMoneyService.transfer(request(AMOUNT), key);
 
-        assertThatThrownBy(() -> accountTransferService.transfer(request(new BigDecimal("1")), key))
+        assertThatThrownBy(() -> accountMoneyService.transfer(request(new BigDecimal("1")), key))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.IDEMPOTENCY_KEY_MISMATCH);
@@ -112,8 +112,8 @@ class TransferIdempotencyTest {
     @DisplayName("금액 표기만 다른 같은 요청(70000 vs 70000.00)은 같은 요청으로 본다")
     void sameAmountDifferentScale_isSameRequest() {
         String key = UUID.randomUUID().toString();
-        TransferResponse first = accountTransferService.transfer(request(AMOUNT), key);
-        TransferResponse second = accountTransferService.transfer(request(new BigDecimal("70000.00")), key);
+        TransferResponse first = accountMoneyService.transfer(request(AMOUNT), key);
+        TransferResponse second = accountMoneyService.transfer(request(new BigDecimal("70000.00")), key);
 
         assertThat(second).isEqualTo(first);
         assertMovedOnce();
@@ -124,10 +124,10 @@ class TransferIdempotencyTest {
     void failedRequest_releasesKey() {
         String key = UUID.randomUUID().toString();
 
-        assertThatThrownBy(() -> accountTransferService.transfer(request(new BigDecimal("99999999")), key))
+        assertThatThrownBy(() -> accountMoneyService.transfer(request(new BigDecimal("99999999")), key))
                 .isInstanceOf(BusinessException.class);
         // 내용이 다르면 422가 나야 정상이지만, 실패한 키는 지워졌으므로 새 요청처럼 처리된다
-        accountTransferService.transfer(request(AMOUNT), key);
+        accountMoneyService.transfer(request(AMOUNT), key);
 
         assertMovedOnce();
     }
@@ -153,7 +153,7 @@ class TransferIdempotencyTest {
                 ready.countDown();
                 try {
                     start.await();
-                    accountTransferService.transfer(request(AMOUNT), sharedKey);
+                    accountMoneyService.transfer(request(AMOUNT), sharedKey);
                     success.incrementAndGet();
                 } catch (BusinessException e) {
                     if (e.getErrorCode() == ErrorCode.IDEMPOTENT_REQUEST_IN_PROGRESS) {

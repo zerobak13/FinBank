@@ -16,7 +16,7 @@
 | 이자 계산 | 순수 자바 엔진을 네 겹으로 검증 | 외부 계산기와 월 상환금 일치 · 무작위 2만 건에서 숨은 버그를 찾아 차단 |
 | 대출 검색 | QueryDSL 동적 조건 + 복합 인덱스 | 10만 건에서 조사 행 37배 감소 · 응답 24배 단축 |
 | 연체 배치 | 커서 Reader · 멱등 3겹 · 청크 크기 실측 | 5만 건, 청크 100 → 1000에서 3.8배 |
-| 테스트 | 실제 MySQL 컨테이너에서 CI | 테스트 554개를 커밋마다 |
+| 테스트 | 실제 MySQL 컨테이너에서 CI | 테스트 563개를 커밋마다 |
 | AI 하네스 | 구현·검증 에이전트 분리 + 강제 장치 3겹 | 판정 기준 수정 시도 차단 · 입력 계약 누락 4건 발견 |
 
 각 주제의 설계 과정·코드·숫자는 [전체 가이드](docs/FinBank_전체가이드.md)([PDF](docs/FinBank_전체가이드.pdf))에 장별로 정리했습니다.
@@ -30,8 +30,11 @@ MySQL을 설치하지 않아도 백엔드와 DB가 한 번에 뜹니다.
 ```bash
 git clone https://github.com/zerobak13/FinBank.git
 cd FinBank
+cp .env.example .env         # 비밀번호·JWT 키 세 칸을 채운다 (예: openssl rand -base64 32)
 docker compose up            # 백엔드 :8080, MySQL :3306
 ```
+
+- 비밀번호와 JWT 키는 저장소에 없습니다. `.env`(gitignore 대상)에 직접 만든 값을 넣고, 빈 칸이 있으면 compose가 기동 전에 어떤 값이 빠졌는지 알려 줍니다.
 
 - API 문서(Swagger UI): http://localhost:8080/swagger-ui.html — 회원가입 → 로그인 → `Authorize`에 응답의 `accessToken` 값만 넣으면(`Bearer `는 자동) 모든 API를 직접 호출해 볼 수 있습니다.
 - 3306 포트를 이미 쓰고 있다면(로컬 MySQL 등) `MYSQL_HOST_PORT=3307 docker compose up`
@@ -39,7 +42,7 @@ docker compose up            # 백엔드 :8080, MySQL :3306
 ```bash
 # 직접 실행할 때 (MySQL 필요)
 cd finbank-backend
-./gradlew test        # 테스트 554개 — finbank_test 스키마
+./gradlew test        # 테스트 563개 — finbank_test 스키마
 ./gradlew perfTest    # 성능 측정 (인덱스 10만 건 / 배치 5만 건) — 수동 실행
 ./gradlew bootRun     # 개발 서버 — finbank 스키마
 
@@ -216,20 +219,21 @@ Flyway V1~V8 기준 11개 표입니다 — 수신·인증 4개(파랑), 여신 6
 
 ## 테스트와 CI
 
-테스트 **554개**가 push·PR마다 GitHub Actions에서 돕니다(성능 측정 2개는 `perf` 태그로 분리 — CI 시간이 곧 개발 피드백 속도입니다). 통합 테스트는 **실제 MySQL 8 컨테이너**에서 돕니다. 비관적 락, 조건부 UPDATE, REPEATABLE READ 스냅샷처럼 이 프로젝트가 증명하려는 동작은 DB 엔진의 특성이라, H2로 바꾸면 검증 자체가 무의미해지기 때문입니다.
+테스트 **563개**가 push·PR마다 GitHub Actions에서 돕니다(성능 측정 2개는 `perf` 태그로 분리 — CI 시간이 곧 개발 피드백 속도입니다). 통합 테스트는 **실제 MySQL 8 컨테이너**에서 돕니다. 비관적 락, 조건부 UPDATE, REPEATABLE READ 스냅샷처럼 이 프로젝트가 증명하려는 동작은 DB 엔진의 특성이라, H2로 바꾸면 검증 자체가 무의미해지기 때문입니다.
 
 | 묶음 | 개수 | 대표 테스트 |
 |---|---:|---|
-| 수신 (동시성·규칙·멱등) | 23 | `WithdrawConcurrencyTest`, `AccountServiceDeadlockTest`, `TransferIdempotencyTest` |
-| 공통 (예외·페이지·API 문서) | 8 | `GlobalExceptionHandlerTest`, `PagingPolicyTest`, `SwaggerSecurityNameTest` |
+| 수신 (동시성·규칙·멱등) | 25 | `WithdrawConcurrencyTest`, `AccountServiceDeadlockTest`, `TransferIdempotencyTest`, `CashIdempotencyTest` |
+| 인증 (가입·재발급·로그아웃) | 5 | `AuthServiceTest` |
+| 공통 (예외·페이지) | 8 | `GlobalExceptionHandlerTest`, `PagingPolicyTest` |
 | 여신 계산 엔진 | 270 | `ScheduleGeneratorTest`, `ScheduleGeneratorPropertyTest`(240조합) |
 | 불변식 하네스 | 190 | `CalculatorInvariantsTest`(143조합), `ScheduleCaseFileTest`(사람 10건 + AI 32건) |
-| 여신 통합 (실제 DB) | 47 | `LoanExecutionServiceTest`, `LoanRepaymentServiceTest`, `LoanRepaymentConcurrencyTest` |
+| 여신 통합 (실제 DB) | 49 | `LoanExecutionServiceTest`, `LoanRepaymentServiceTest`, `LoanRepaymentConcurrencyTest`, `LoanPrepaymentConcurrencyTest` |
 | 배치 | 16 | `OverdueDetectionJobTest`(250건 청크 경계, 상환과 겹치는 순간), `OverdueInterestAccrualJobTest` |
 
-화면 테스트 20개(`npm test` — 토큰 재발급·금액 규칙)는 로컬에서 돌립니다. CI의 프론트 job은 아직 빌드만 합니다.
+화면 테스트 20개(`npm test` — 토큰 재발급·금액 규칙)도 CI의 프론트 job에서 빌드와 함께 돕니다.
 
-PR이 판정 기준 파일(불변식·하네스·CI 설정)을 바꾸면 `oracle-approved` 라벨 없이는 통과하지 않는 **Harness Guard**도 함께 돕니다.
+PR이 판정 기준 파일(불변식·하네스·CI 설정)을 바꾸면 `oracle-approved` 라벨 없이는 통과하지 않는 **Harness Guard**도 함께 돕니다. 가드는 PR에 담긴 코드가 아니라 기준 브랜치의 코드로 돌아서, 같은 PR이 규칙을 고쳐 스스로를 통과시킬 수 없습니다.
 
 ---
 
@@ -302,6 +306,8 @@ scripts/harness/fast-test.sh               # 빠른 테스트 (계산 엔진 + �
 - **동시 신청의 한도** — 같은 회원의 신청 두 건이 정확히 같은 순간에 오면 서로를 보지 못한 채 둘 다 한도 심사를 통과할 수 있습니다(회원 단위 잠금 없음, 가이드 7-5).
 - **배치 다중화** — `@Scheduled`는 인스턴스마다 돕니다. 서버를 늘리면 ShedLock이나 외부 스케줄러로 실행 주체를 하나로 만들어야 합니다(지금은 단일 인스턴스이고, 멱등 3겹이 중복 실행을 막습니다).
 - **정렬이 붙은 목록 쿼리** — 커버링 인덱스나 커서 기반 페이징.
+- **인증 강화** — Refresh Token을 DB에 원문으로 저장합니다(해시로 저장하는 것이 다음 단계). 로그인 시도 횟수 제한도 없고, 토큰은 브라우저 localStorage에 둡니다(HttpOnly 쿠키는 CSRF 대비와 함께 검토).
+- **멱등키 정리** — 처리 중(IN_PROGRESS)에 서버가 죽으면 그 키는 계속 409로 남습니다(시간 초과 회수 없음). 오래된 키를 지우는 정리 작업도 없습니다.
 - **배포** — 초기 버전(2026-01)은 Vercel·Render·Aiven MySQL에 배포했습니다. 여신 모듈을 포함한 재배포는 운영 DB 마이그레이션 점검 후 진행합니다.
 - **하네스 자동화** — 구현 → 검사 → 검증 → 반려를 스크립트 루프로.
 

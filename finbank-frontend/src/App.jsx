@@ -71,7 +71,7 @@ export default function App() {
     try {
       setLoading(true);
       const data = await authApi.login(loginEmail, loginPassword);
-      saveAuth({ token: data.token, refreshToken: data.refreshToken, email: data.email, name: data.name });
+      saveAuth({ token: data.accessToken, refreshToken: data.refreshToken, email: data.email, name: data.name });
       setLoginPassword("");
       notify(`${data.name}님 환영합니다.`, "success");
     } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
@@ -81,9 +81,12 @@ export default function App() {
     e.preventDefault();
     try {
       setLoading(true);
-      await authApi.register(loginEmail, loginName, loginPassword);
-      notify("회원가입 완료. 로그인 해주세요.", "success");
+      // 가입 응답에 토큰이 함께 오므로 바로 로그인 상태로 둔다
+      const data = await authApi.register(loginEmail, loginName, loginPassword);
+      saveAuth({ token: data.accessToken, refreshToken: data.refreshToken, email: data.email, name: data.name });
+      setLoginPassword("");
       setIsRegisterMode(false);
+      notify(`가입을 환영합니다, ${data.name}님.`, "success");
     } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
   };
 
@@ -94,7 +97,7 @@ export default function App() {
     if (amount === null) { notify(AMOUNT_RULE, "error"); return false; }
     try {
       setLoading(true);
-      await accountApi.deposit(selected.account.id, amount);
+      await accountApi.deposit(selected.account.id, amount, newIdempotencyKey()); // 버튼 1회 = 키 1개
       notify("입금 완료", "success");
       await refreshAfterTransaction(selected.account.id);
       return true;
@@ -107,7 +110,7 @@ export default function App() {
     if (amount === null) { notify(AMOUNT_RULE, "error"); return false; }
     try {
       setLoading(true);
-      await accountApi.withdraw(selected.account.id, amount);
+      await accountApi.withdraw(selected.account.id, amount, newIdempotencyKey());
       notify("출금 완료", "success");
       await refreshAfterTransaction(selected.account.id);
       return true;

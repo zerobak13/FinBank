@@ -37,7 +37,7 @@ public class AuthController {
         this.authService = authService;
     }
 
-    @Operation(summary = "회원가입", description = "이메일, 이름, 비밀번호(4자 이상)로 회원가입합니다. Access Token과 Refresh Token을 함께 반환합니다.")
+    @Operation(summary = "회원가입", description = "이메일, 이름, 비밀번호(8자 이상)로 회원가입합니다. Access Token과 Refresh Token을 함께 반환합니다.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "회원가입 성공"),
             @ApiResponse(responseCode = "400", description = "입력값 유효성 오류",

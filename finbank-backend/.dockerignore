@@ -1,0 +1,10 @@
+# 이미지 안에서 다시 빌드하므로 로컬 빌드 결과물·캐시는 보내지 않는다
+build/
+.gradle/
+out/
+bin/
+.idea/
+*.iml
+
+# 로컬 비밀 설정 — 이미지(그리고 그 안의 jar)에 들어가면 안 된다
+src/main/resources/application-local.yml

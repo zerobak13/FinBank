@@ -11,7 +11,10 @@ const TYPE_LABEL = {
 
 /** 대출 상품 카드 목록 */
 export default function LoanProductList({ products, selectedId, onSelect }) {
-    if (!products?.length) {
+    if (!products) {
+        return <p className="text-xs text-slate-500">상품을 불러오는 중입니다.</p>;
+    }
+    if (!products.length) {
         return <p className="text-xs text-slate-500">판매 중인 상품이 없습니다.</p>;
     }
     return (

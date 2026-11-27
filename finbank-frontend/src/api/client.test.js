@@ -17,7 +17,7 @@ let calls = [];
 let handler = null;
 globalThis.fetch = async (url, init = {}) => { calls.push({ url, init }); return handler(url, init, calls.length); };
 
-// client.js는 불러오는 순간 window를 읽으므로 흉내를 다 만든 뒤에 불러온다
+// client.js가 window·localStorage·fetch를 쓰므로 흉내를 다 만든 뒤에 불러온다
 const { client, ApiError, SESSION_EXPIRED_EVENT, readAuth } = await import("./client.js");
 
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -43,7 +43,7 @@ test("401 → 재발급 성공 → 같은 요청을 같은 멱등키·새 토큰
         if (isRefresh(url)) {
             assert.equal(JSON.parse(init.body).refreshToken, "R1");
             assert.equal(init.headers.Authorization, undefined);
-            return json(200, { accessToken: "A2", refreshToken: "R2", token: "A2", email: "u@x", name: "U" });
+            return json(200, { accessToken: "A2", refreshToken: "R2", email: "u@x", name: "U" });
         }
         return init.headers.Authorization === "Bearer A2" ? json(200, { id: 1 }) : empty(401);
     };

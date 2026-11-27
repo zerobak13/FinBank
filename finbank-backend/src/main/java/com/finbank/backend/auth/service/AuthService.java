@@ -82,8 +82,9 @@ public class AuthService {
         RefreshToken saved = refreshTokenRepository.findByToken(request.getRefreshToken())
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH_TOKEN));
 
+        // 만료된 토큰은 여기서 지우지 않는다 — 예외로 트랜잭션이 롤백돼 어차피 지워지지 않고,
+        // 다음 로그인이 회원 기준(deleteByMember)으로 정리한다
         if (saved.isExpired()) {
-            refreshTokenRepository.delete(saved);
             throw new BusinessException(ErrorCode.REFRESH_TOKEN_EXPIRED);
         }
 

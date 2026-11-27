@@ -16,8 +16,11 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class SwaggerConfig {
 
-    /** 보안 스킴 이름 — 컨트롤러의 {@code @SecurityRequirement}도 이 상수를 쓴다 (대소문자까지 같아야 토큰이 붙는다) */
-    public static final String SECURITY_SCHEME_NAME = "BearerAuth";
+    /**
+     * 보안 스킴 이름. 아래 전역 보안 요구사항이 모든 API에 이 스킴을 건다 — 컨트롤러마다 {@code @SecurityRequirement}를
+     * 따로 달지 않는다(예전에 이름의 대소문자가 어긋난 곳은 Swagger UI가 토큰을 붙이지 않았다).
+     */
+    private static final String SECURITY_SCHEME_NAME = "BearerAuth";
 
     @Bean
     public OpenAPI openAPI() {

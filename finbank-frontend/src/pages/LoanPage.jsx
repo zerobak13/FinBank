@@ -11,16 +11,11 @@ import { loanApi, newIdempotencyKey, LOAN_ERROR_MESSAGE, rejectReasonText } from
  * 실행·상환은 돈이 움직이는 요청이므로 <b>사용자 행동 1회당 멱등키 1개</b>를 만들어 보낸다.
  * (재시도는 api 레이어가 같은 키로 처리한다 — loanApi.js 참고)
  */
-const FALLBACK_PRODUCTS = [
-    { id: 1, name: "직장인 신용대출 (원리금균등)", repaymentType: "EQUAL_PAYMENT",   interestRate: 0.059, overdueExtraRate: 0.03, minAmount: 1000000, maxAmount: 50000000, maxTermMonths: 60 },
-    { id: 2, name: "신용대출 (원금균등)",          repaymentType: "EQUAL_PRINCIPAL", interestRate: 0.055, overdueExtraRate: 0.03, minAmount: 1000000, maxAmount: 30000000, maxTermMonths: 36 },
-    { id: 3, name: "단기 신용대출 (만기일시)",     repaymentType: "BULLET",          interestRate: 0.068, overdueExtraRate: 0.03, minAmount: 1000000, maxAmount: 20000000, maxTermMonths: 12 },
-];
 
 const won = (v) => Number(v ?? 0).toLocaleString("ko-KR");
 
 export default function LoanPage({ auth, accounts = [], loading, setLoading, notify, onBalanceChanged }) {
-    const [products, setProducts] = useState(FALLBACK_PRODUCTS);
+    const [products, setProducts] = useState(null);   // null = 불러오는 중
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [applications, setApplications] = useState([]);
     const [loans, setLoans] = useState([]);
@@ -66,6 +61,7 @@ export default function LoanPage({ auth, accounts = [], loading, setLoading, not
                 setProducts(await loanApi.getProducts());
                 setApiReady(true);
             } catch {
+                setProducts([]);
                 setApiReady(false);
                 return;
             }

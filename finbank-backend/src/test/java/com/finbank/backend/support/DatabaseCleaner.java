@@ -11,6 +11,9 @@ import org.springframework.stereotype.Component;
  * 테이블이 늘 때마다 모든 테스트를 고치지 않도록 삭제 순서를 여기 한 곳에만 둔다.</p>
  *
  * <p>삭제 순서: FK 자식 → 부모. loan_products 시드는 유지한다.</p>
+ *
+ * <p><b>테스트 스키마(이름이 {@code _test}로 끝나는)에서만 돈다.</b> 테스트는 {@code DB_URL} 환경변수를 따라가므로,
+ * 셸에 개발 DB 주소가 남아 있으면 개발 데이터가 통째로 지워진다 — 지우기 전에 멈춘다.</p>
  */
 @Component
 public class DatabaseCleaner {
@@ -22,6 +25,10 @@ public class DatabaseCleaner {
     }
 
     public void clean() {
+        String schema = jdbcTemplate.queryForObject("SELECT DATABASE()", String.class);
+        if (schema == null || !schema.endsWith("_test")) {
+            throw new IllegalStateException("DatabaseCleaner는 *_test 스키마에서만 돈다 (현재: " + schema + ")");
+        }
         jdbcTemplate.update("DELETE FROM idempotency_keys");
         jdbcTemplate.update("DELETE FROM loan_transactions");
         jdbcTemplate.update("DELETE FROM overdue_histories");

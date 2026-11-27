@@ -1,8 +1,10 @@
-const API_URL = window.location.hostname === 'localhost'
-    ? "http://localhost:8080"
-    : "https://finbank-backend.onrender.com";
+// 개발 서버(vite)에서는 같은 출처의 /api를 vite proxy가 백엔드(:8080)로 넘긴다 — localhost든 127.0.0.1이든 그대로 된다.
+// 배포 빌드는 VITE_API_URL(빌드 환경변수)을 쓰고, 없으면 지금의 배포 주소(Render)를 쓴다.
+const env = import.meta.env ?? {};   // node:test로 돌릴 때는 import.meta.env가 없다
+const API_URL = env.VITE_API_URL ?? (env.DEV ? "" : "https://finbank-backend.onrender.com");
 
-const AUTH_KEY = "finbankAuth";
+/** 로그인 정보를 담는 localStorage 키 — useAuth도 이 값을 쓴다 */
+export const AUTH_KEY = "finbankAuth";
 
 /** 로그인이 만료됐고 토큰 재발급도 실패했을 때 화면 전체에 알리는 이벤트 — App이 듣고 로그아웃한다 */
 export const SESSION_EXPIRED_EVENT = "finbank:session-expired";
@@ -73,7 +75,7 @@ async function requestNewTokens() {
 
     localStorage.setItem(AUTH_KEY, JSON.stringify({
         ...auth,
-        token: data.accessToken ?? data.token,
+        token: data.accessToken,
         refreshToken: data.refreshToken,
     }));
     return true;
