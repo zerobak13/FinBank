@@ -1,7 +1,9 @@
 package com.finbank.backend.loan.service;
 
 import com.finbank.backend.account.domain.Account;
+import com.finbank.backend.account.domain.TransactionLog;
 import com.finbank.backend.account.repository.AccountRepository;
+import com.finbank.backend.account.repository.TransactionLogRepository;
 import com.finbank.backend.account.service.AccountMoneyService;
 import com.finbank.backend.exception.BusinessException;
 import com.finbank.backend.exception.ErrorCode;
@@ -14,7 +16,6 @@ import com.finbank.backend.loan.domain.OverdueHistory;
 import com.finbank.backend.loan.domain.ProductStatus;
 import com.finbank.backend.loan.domain.RepaymentSchedule;
 import com.finbank.backend.loan.domain.RepaymentType;
-import com.finbank.backend.loan.domain.ScheduleStatus;
 import com.finbank.backend.loan.dto.LoanApplicationResponse;
 import com.finbank.backend.loan.dto.LoanApplyRequest;
 import com.finbank.backend.loan.dto.LoanExecutionResponse;
@@ -69,6 +70,7 @@ class LoanRepaymentServiceTest {
     @Autowired RepaymentScheduleRepository repaymentScheduleRepository;
     @Autowired OverdueHistoryRepository overdueHistoryRepository;
     @Autowired AccountRepository accountRepository;
+    @Autowired TransactionLogRepository transactionLogRepository;
     @Autowired MemberRepository memberRepository;
     @Autowired DatabaseCleaner cleaner;
 
@@ -120,8 +122,7 @@ class LoanRepaymentServiceTest {
     private OverdueHistory overdueFirstInstallment(BigDecimal penalty) {
         LoanAccount loanAccount = loanAccountRepository.findById(loan.loanId()).orElseThrow();
         RepaymentSchedule first = repaymentScheduleRepository
-                .findFirstByLoanAccountAndStatusInOrderByInstallmentNoAsc(loanAccount, List.of(ScheduleStatus.PENDING))
-                .orElseThrow();
+                .findByLoanAccountOrderByInstallmentNoAsc(loanAccount).get(0);
         overdueFixture.markScheduleOverdue(first.getId());
         overdueFixture.markLoanOverdue(loanAccount.getId());
         return overdueFixture.openHistory(first, first.getDueDate(), penalty, first.getDueDate().plusDays(10));
@@ -356,5 +357,15 @@ class LoanRepaymentServiceTest {
         assertThat(first.principalPortion().add(prepay.principalPortion()))
                 .isEqualByComparingTo(LOAN_AMOUNT);
         assertThat(prepay.loanBalanceAfter()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("대출 실행금·회차 상환은 계좌 거래 내역에 어느 대출(몇 회차)인지 남는다 — 일반 입금·출금과 구분")
+    void execution_and_repayment_describeLoanInAccountHistory() {
+        loanRepaymentService.repay(loan.loanId(), 1, newKey());
+
+        assertThat(transactionLogRepository.findAll())
+                .extracting(TransactionLog::getDescription)
+                .contains("대출 실행 · 대출 #" + loan.loanId(), "대출 상환 · 대출 #" + loan.loanId() + " 1회차");
     }
 }

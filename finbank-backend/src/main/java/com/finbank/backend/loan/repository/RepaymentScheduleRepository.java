@@ -19,9 +19,36 @@ public interface RepaymentScheduleRepository extends JpaRepository<RepaymentSche
     /** 대출의 전체 스케줄 (회차순) */
     List<RepaymentSchedule> findByLoanAccountOrderByInstallmentNoAsc(LoanAccount loanAccount);
 
-    /** 가장 빠른 미납(PENDING/OVERDUE) 회차 — "순서대로만 납부" 규칙 검증용 */
-    Optional<RepaymentSchedule> findFirstByLoanAccountAndStatusInOrderByInstallmentNoAsc(
-            LoanAccount loanAccount, List<ScheduleStatus> statuses);
+    /**
+     * 다음 상환 회차(가장 빠른 PENDING·OVERDUE)의 ID — <b>잠금 조회</b>(최신 커밋본). 회차 상환의 대상 선택과
+     * "순서대로만 납부" 검증에 쓴다.
+     *
+     * <p>일반 조회는 트랜잭션 첫 조회 시점의 스냅샷이다. 같은 대출의 1회차 상환이 끝나기를 기다린 2회차 상환이
+     * 일반 조회로 고르면 1회차를 아직 미납으로 보고 "다음은 1회차"로 거절한다. 대출 행을 이미 잠근 뒤라 같은 대출의
+     * 상환끼리는 줄을 서므로 쓰기 잠금으로 바로 잡는다(뒤이은 PAID 전이도 같은 행). 인덱스 고정은 아래
+     * {@link #lockOverdueScheduleIds}와 같은 이유다.</p>
+     */
+    @Query(value = """
+            select s.id from repayment_schedules s force index (uq_schedule_installment)
+             where s.loan_account_id = :loanAccountId
+               and s.status in ('PENDING', 'OVERDUE')
+             order by s.installment_no asc
+             limit 1
+               for update
+            """, nativeQuery = true)
+    Optional<Long> lockNextPayableScheduleId(@Param("loanAccountId") Long loanAccountId);
+
+    /**
+     * 마지막 납부 회차의 납기일 — 잠금 없는 조회. 중도상환 <b>견적</b>의 경과이자 기산일에 쓴다
+     * (돈이 움직이지 않는 조회라 실제 중도상환처럼 {@link #lockLastPaidScheduleId}로 잠그지 않는다).
+     * 회차는 순서대로만 납부되므로 납부 회차 중 가장 늦은 납기일이 곧 마지막 납부 회차의 납기일이다.
+     */
+    @Query("""
+            select max(s.dueDate) from RepaymentSchedule s
+             where s.loanAccount.id = :loanAccountId
+               and s.status = com.finbank.backend.loan.domain.ScheduleStatus.PAID
+            """)
+    Optional<LocalDate> findLastPaidDueDate(@Param("loanAccountId") Long loanAccountId);
 
     /**
      * 조건부 상태 전이 — 동일 회차 이중 상환 방어의 1차 방어선.

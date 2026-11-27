@@ -5,8 +5,6 @@ import com.finbank.backend.account.repository.TransactionLogRepository;
 import com.finbank.backend.common.idempotency.IdempotentExecutor;
 import com.finbank.backend.exception.ForbiddenException;
 import com.finbank.backend.exception.NotFoundException;
-import com.finbank.backend.loan.domain.calculator.AccruedInterestCalculator;
-import com.finbank.backend.loan.domain.calculator.PrepaymentFeeCalculator;
 import com.finbank.backend.loan.repository.LoanAccountRepository;
 import com.finbank.backend.loan.repository.LoanTransactionRepository;
 import com.finbank.backend.loan.repository.OverdueHistoryRepository;
@@ -45,8 +43,7 @@ class LoanRepaymentAuthorizationTest {
     @Mock OverdueHistoryRepository overdueHistoryRepository;
     @Mock AccountRepository accountRepository;
     @Mock TransactionLogRepository transactionLogRepository;
-    @Mock AccruedInterestCalculator accruedInterestCalculator;
-    @Mock PrepaymentFeeCalculator prepaymentFeeCalculator;
+    @Mock PrepaymentPricer prepaymentPricer;
     @Mock IdempotentExecutor idempotentExecutor;
 
     @InjectMocks LoanRepaymentProcessor processor;

@@ -60,22 +60,32 @@ public class TransactionLog {
     private String description;
 
     public static TransactionLog deposit(Account to, BigDecimal amount, BigDecimal balanceAfter) {
+        return deposit(to, amount, balanceAfter, "Deposit");
+    }
+
+    /** 설명을 붙인 입금 — 대출 실행금처럼 일반 입금과 구분해야 할 때 (계좌 거래 내역에 그대로 보인다) */
+    public static TransactionLog deposit(Account to, BigDecimal amount, BigDecimal balanceAfter, String description) {
         TransactionLog log = new TransactionLog();
         log.type = TransactionType.DEPOSIT;
         log.toAccount = to;
         log.amount = amount;
         log.balanceAfter = balanceAfter;
-        log.description = "Deposit";
+        log.description = description;
         return log;
     }
 
     public static TransactionLog withdraw(Account from, BigDecimal amount, BigDecimal balanceAfter) {
+        return withdraw(from, amount, balanceAfter, "Withdraw");
+    }
+
+    /** 설명을 붙인 출금 — 대출 상환처럼 일반 출금과 구분해야 할 때 */
+    public static TransactionLog withdraw(Account from, BigDecimal amount, BigDecimal balanceAfter, String description) {
         TransactionLog log = new TransactionLog();
         log.type = TransactionType.WITHDRAW;
         log.fromAccount = from;
         log.amount = amount;
         log.balanceAfter = balanceAfter;
-        log.description = "Withdraw";
+        log.description = description;
         return log;
     }
 

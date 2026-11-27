@@ -14,9 +14,6 @@ import com.finbank.backend.loan.domain.LoanAccountStatus;
 import com.finbank.backend.loan.domain.LoanTransaction;
 import com.finbank.backend.loan.domain.OverdueHistory;
 import com.finbank.backend.loan.domain.RepaymentSchedule;
-import com.finbank.backend.loan.domain.ScheduleStatus;
-import com.finbank.backend.loan.domain.calculator.AccruedInterestCalculator;
-import com.finbank.backend.loan.domain.calculator.PrepaymentFeeCalculator;
 import com.finbank.backend.loan.dto.RepaymentResponse;
 import com.finbank.backend.loan.repository.LoanAccountRepository;
 import com.finbank.backend.loan.repository.LoanTransactionRepository;
@@ -29,8 +26,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
-import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -43,14 +38,15 @@ import java.util.Optional;
  * (엔티티를 먼저 읽으면 1차 캐시 때문에 뒤이은 락 조회가 낡은 값을 돌려준다 — 계좌 동시성 테스트에서 확인한 함정).
  * 락보다 먼저 하는 일은 소유자 확인이다 — 남의 대출 번호로 온 요청이 그 사람의 계좌·대출을 잠그지 못하게.</p>
  *
- * <p><b>다른 작업과 겹칠 때</b>: 락을 기다린 뒤에 읽는 값은 잠금 조회로 읽는다 — 연체 이력, 남은 연체 회차,
- * 중도상환의 마지막 납부 회차. 일반 조회는 트랜잭션 첫 조회(소유자 확인) 시점의 스냅샷이라, 기다리는 사이
+ * <p><b>다른 작업과 겹칠 때</b>: 락을 기다린 뒤에 읽는 값은 잠금 조회로 읽는다 — 다음 상환 회차, 연체 이력,
+ * 남은 연체 회차, 중도상환의 마지막 납부 회차. 일반 조회는 트랜잭션 첫 조회(소유자 확인) 시점의 스냅샷이라, 기다리는 사이
  * 배치가 가산한 연체이자·연체로 바꾼 회차나 같은 대출의 다른 상환이 끝낸 회차를 못 볼 수 있다.</p>
  *
  * <p><b>이중 상환 방어의 핵심은 조건부 UPDATE다.</b> MySQL 기본 격리수준(REPEATABLE READ)에서
  * 일반 SELECT는 트랜잭션 시작 시점의 스냅샷을 읽는다. 락을 기다렸다 통과한 두 번째 요청이
  * "아직 PENDING인 회차"를 스냅샷에서 볼 수 있다는 뜻이다. 반면 UPDATE는 항상 최신 커밋본을 보고
- * 조건을 평가하므로, {@code WHERE status IN (PENDING, OVERDUE)}가 0행을 반환하며 정확히 막힌다.</p>
+ * 조건을 평가하므로, {@code WHERE status IN (PENDING, OVERDUE)}가 0행을 반환하며 정확히 막힌다.
+ * (다음 회차를 잠금 조회로 고르는 것은 엉뚱한 거절을 막기 위해서고, 이중 상환을 막는 마지막 판정은 여전히 이 UPDATE다.)</p>
  */
 @Service
 public class LoanRepaymentProcessor {
@@ -61,8 +57,7 @@ public class LoanRepaymentProcessor {
     private final OverdueHistoryRepository overdueHistoryRepository;
     private final AccountRepository accountRepository;
     private final TransactionLogRepository transactionLogRepository;
-    private final AccruedInterestCalculator accruedInterestCalculator;
-    private final PrepaymentFeeCalculator prepaymentFeeCalculator;
+    private final PrepaymentPricer prepaymentPricer;
     private final IdempotentExecutor idempotentExecutor;
 
     public LoanRepaymentProcessor(LoanAccountRepository loanAccountRepository,
@@ -71,8 +66,7 @@ public class LoanRepaymentProcessor {
                                   OverdueHistoryRepository overdueHistoryRepository,
                                   AccountRepository accountRepository,
                                   TransactionLogRepository transactionLogRepository,
-                                  AccruedInterestCalculator accruedInterestCalculator,
-                                  PrepaymentFeeCalculator prepaymentFeeCalculator,
+                                  PrepaymentPricer prepaymentPricer,
                                   IdempotentExecutor idempotentExecutor) {
         this.loanAccountRepository = loanAccountRepository;
         this.repaymentScheduleRepository = repaymentScheduleRepository;
@@ -80,8 +74,7 @@ public class LoanRepaymentProcessor {
         this.overdueHistoryRepository = overdueHistoryRepository;
         this.accountRepository = accountRepository;
         this.transactionLogRepository = transactionLogRepository;
-        this.accruedInterestCalculator = accruedInterestCalculator;
-        this.prepaymentFeeCalculator = prepaymentFeeCalculator;
+        this.prepaymentPricer = prepaymentPricer;
         this.idempotentExecutor = idempotentExecutor;
     }
 
@@ -96,9 +89,10 @@ public class LoanRepaymentProcessor {
             throw new BusinessException(ErrorCode.INVALID_STATE, "이미 완납된 대출입니다.");
         }
 
-        RepaymentSchedule target = repaymentScheduleRepository
-                .findFirstByLoanAccountAndStatusInOrderByInstallmentNoAsc(
-                        loan, List.of(ScheduleStatus.PENDING, ScheduleStatus.OVERDUE))
+        // 다음 회차도 잠금 조회로 고른다 — 일반 조회는 첫 조회(소유자 확인) 때의 스냅샷이라, 락을 기다리는 사이
+        // 같은 대출의 다른 상환이 끝낸 회차를 아직 미납으로 본다 → 2회차 상환이 "다음은 1회차"로 거절된다
+        RepaymentSchedule target = repaymentScheduleRepository.lockNextPayableScheduleId(loan.getId())
+                .flatMap(repaymentScheduleRepository::findById)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_STATE, "상환할 회차가 없습니다."));
 
         // 클라이언트가 회차를 지정했다면 "가장 빠른 미납 회차"와 일치해야 한다 (순서대로만 상환)
@@ -124,7 +118,9 @@ public class LoanRepaymentProcessor {
                 .orElse(BigDecimal.ZERO);
         BigDecimal total = principal.add(interest).add(penalty);
 
-        withdrawFromAccount(account, total, penalty);   // 모자라면 여기서 전부 거절 — 원리금만 받는 일은 없다
+        // 모자라면 여기서 전부 거절 — 원리금만 받는 일은 없다
+        withdrawFromAccount(account, total, penalty,
+                "대출 상환 · 대출 #" + loan.getId() + " " + target.getInstallmentNo() + "회차");
         loan.repayPrincipal(principal);
         // 이력을 닫아야 가산 배치가 멈춘다 — 안 닫으면 다 갚은 회차에 이자가 계속 붙는다 (배치를 만들며 드러난 빈틈)
         overdue.ifPresent(history -> history.resolve(LocalDate.now()));
@@ -159,44 +155,29 @@ public class LoanRepaymentProcessor {
         Account account = lockLinkedAccount(loanId);
         LoanAccount loan = lockLoan(loanId);
 
-        if (loan.getStatus() != LoanAccountStatus.ACTIVE) {
-            // 연체 중 전액 중도상환은 아직 지원하지 않는다 — 원금·이자·연체이자 중 무엇부터 채울지(충당 순서)를
-            // 먼저 정해야 해서, 연체 회차를 먼저 상환하도록 명시적으로 거부한다.
-            throw new BusinessException(ErrorCode.INVALID_STATE,
-                    "전액 중도상환은 정상(ACTIVE) 대출만 가능합니다. (현재 상태: " + loan.getStatus() + ")");
-        }
+        PrepaymentPricer.requirePrepayable(loan);
 
-        BigDecimal remainingPrincipal = loan.getBalance();
-        if (remainingPrincipal.signum() == 0) {
-            throw new BusinessException(ErrorCode.INVALID_STATE, "이미 완납된 대출입니다.");
-        }
+        // 금액 계산은 견적(LoanQueryService.quotePrepayment)과 같은 곳에서 — 수수료는 대출일부터 3년 안에 갚을 때만
+        PrepaymentPricer.Amounts amounts = prepaymentPricer.price(loan, interestStartDate(loan), LocalDate.now());
+        BigDecimal total = amounts.total();
 
-        LocalDate today = LocalDate.now();
-        BigDecimal accruedInterest = accruedInterestCalculator.calculate(
-                remainingPrincipal, loan.getInterestRate(), elapsedDaysSinceLastPayment(loan, today));
-        BigDecimal fee = prepaymentFeeCalculator.calculate(
-                remainingPrincipal, loan.getPrepaymentFeeRate(),
-                remainingDays(loan, today), totalDays(loan));
-
-        BigDecimal total = remainingPrincipal.add(accruedInterest).add(fee);
-
-        withdrawFromAccount(account, total, BigDecimal.ZERO);
-        loan.repayPrincipal(remainingPrincipal); // 잔액 0 → PAID_OFF
+        withdrawFromAccount(account, total, BigDecimal.ZERO, "전액 중도상환 · 대출 #" + loan.getId());
+        loan.repayPrincipal(amounts.principal()); // 잔액 0 → PAID_OFF
 
         // 남은 회차는 삭제하지 않고 CANCELED로 남긴다 (계약이 어떤 계획이었는지는 사실이다)
         repaymentScheduleRepository.cancelPendingByLoanAccountId(loan.getId());
 
-        loanTransactionRepository.save(
-                LoanTransaction.prepayment(loan, remainingPrincipal, accruedInterest.add(fee), idempotencyKey));
+        loanTransactionRepository.save(LoanTransaction.prepayment(
+                loan, amounts.principal(), amounts.accruedInterest().add(amounts.fee()), idempotencyKey));
 
         RepaymentResponse response = new RepaymentResponse(
                 loan.getId(),
                 "PREPAYMENT",
                 null,
-                MoneyPolicy.toWon(remainingPrincipal),
-                MoneyPolicy.toWon(accruedInterest),
+                MoneyPolicy.toWon(amounts.principal()),
+                MoneyPolicy.toWon(amounts.accruedInterest()),
                 BigDecimal.ZERO,
-                MoneyPolicy.toWon(fee),
+                MoneyPolicy.toWon(amounts.fee()),
                 MoneyPolicy.toWon(total),
                 MoneyPolicy.toWon(loan.getBalance()),
                 MoneyPolicy.toWon(account.getBalance()),
@@ -238,8 +219,9 @@ public class LoanRepaymentProcessor {
      * 거절 메시지에는 얼마가 있어야 하는지(연체이자가 들어 있으면 그 금액까지) 적어, 입금하고 다시 시도할 수 있게 한다.</p>
      *
      * @param penaltyIncluded {@code amount} 안의 연체이자 (안내 문구용, 없으면 0)
+     * @param description     계좌 거래 내역에 남길 설명 — 어느 대출의 몇 회차 상환인지 (일반 출금과 구분)
      */
-    private void withdrawFromAccount(Account account, BigDecimal amount, BigDecimal penaltyIncluded) {
+    private void withdrawFromAccount(Account account, BigDecimal amount, BigDecimal penaltyIncluded, String description) {
         if (account.isLocked()) {
             throw new BusinessException(ErrorCode.ACCOUNT_LOCKED, "잠금된 계좌에서는 상환할 수 없습니다.");
         }
@@ -250,7 +232,7 @@ public class LoanRepaymentProcessor {
                             + "이고, 현재 잔액은 " + won(account.getBalance()) + "입니다.");
         }
         account.withdraw(amount);
-        transactionLogRepository.save(TransactionLog.withdraw(account, amount, account.getBalance()));
+        transactionLogRepository.save(TransactionLog.withdraw(account, amount, account.getBalance(), description));
     }
 
     /** 안내 문구용 금액 표기 — 1051150 → "1,051,150원" */
@@ -269,20 +251,10 @@ public class LoanRepaymentProcessor {
     }
 
     /** 경과이자 기산일 = 직전 납부 회차의 납기일, 없으면 실행일 (납부 회차는 잠금 조회 — 방금 끝난 상환까지 본다) */
-    private long elapsedDaysSinceLastPayment(LoanAccount loan, LocalDate today) {
-        LocalDate base = repaymentScheduleRepository.lockLastPaidScheduleId(loan.getId())
+    private LocalDate interestStartDate(LoanAccount loan) {
+        return repaymentScheduleRepository.lockLastPaidScheduleId(loan.getId())
                 .flatMap(repaymentScheduleRepository::findById)
                 .map(RepaymentSchedule::getDueDate)
                 .orElse(loan.getExecutedAt());
-        return Math.max(0, ChronoUnit.DAYS.between(base, today));
-    }
-
-    private long totalDays(LoanAccount loan) {
-        return Math.max(1, ChronoUnit.DAYS.between(loan.getExecutedAt(), loan.getMaturityDate()));
-    }
-
-    private long remainingDays(LoanAccount loan, LocalDate today) {
-        long remaining = ChronoUnit.DAYS.between(today, loan.getMaturityDate());
-        return Math.min(Math.max(0, remaining), totalDays(loan));
     }
 }

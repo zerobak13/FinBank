@@ -9,6 +9,7 @@ import com.finbank.backend.loan.domain.OverdueHistory;
 import com.finbank.backend.loan.dto.LoanDetailResponse;
 import com.finbank.backend.loan.dto.LoanSearchCondition;
 import com.finbank.backend.loan.dto.LoanSummaryResponse;
+import com.finbank.backend.loan.dto.PrepaymentQuoteResponse;
 import com.finbank.backend.loan.dto.RepaymentScheduleResponse;
 import com.finbank.backend.loan.repository.LoanAccountRepository;
 import com.finbank.backend.loan.repository.OverdueHistoryRepository;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -34,15 +36,18 @@ public class LoanQueryService {
     private final RepaymentScheduleRepository repaymentScheduleRepository;
     private final OverdueHistoryRepository overdueHistoryRepository;
     private final CurrentMemberProvider currentMember;
+    private final PrepaymentPricer prepaymentPricer;
 
     public LoanQueryService(LoanAccountRepository loanAccountRepository,
                             RepaymentScheduleRepository repaymentScheduleRepository,
                             OverdueHistoryRepository overdueHistoryRepository,
-                            CurrentMemberProvider currentMember) {
+                            CurrentMemberProvider currentMember,
+                            PrepaymentPricer prepaymentPricer) {
         this.loanAccountRepository = loanAccountRepository;
         this.repaymentScheduleRepository = repaymentScheduleRepository;
         this.overdueHistoryRepository = overdueHistoryRepository;
         this.currentMember = currentMember;
+        this.prepaymentPricer = prepaymentPricer;
     }
 
     public List<LoanSummaryResponse> getMyLoans() {
@@ -74,6 +79,23 @@ public class LoanQueryService {
 
     public List<RepaymentScheduleResponse> getSchedules(Long loanId) {
         return schedulesOf(getOwnLoan(loanId));
+    }
+
+    /**
+     * 전액 중도상환 견적 — 돈은 움직이지 않는다. 실제 중도상환과 같은 계산({@link PrepaymentPricer})이라 같은 날이면
+     * 같은 금액이 나온다. 잠금 없이 읽으므로 그 사이 다른 상환이 끝나면 실제 금액이 달라질 수 있다.
+     * 중도상환할 수 없는 대출(연체·완납)이면 실제 중도상환과 같은 409.
+     */
+    public PrepaymentQuoteResponse quotePrepayment(Long loanId) {
+        LoanAccount loan = getOwnLoan(loanId);
+        PrepaymentPricer.requirePrepayable(loan);
+
+        LocalDate today = LocalDate.now();
+        LocalDate interestFrom = repaymentScheduleRepository.findLastPaidDueDate(loan.getId())
+                .orElse(loan.getExecutedAt());
+        PrepaymentPricer.Amounts amounts = prepaymentPricer.price(loan, interestFrom, today);
+        return PrepaymentQuoteResponse.of(loan.getId(), amounts.principal(), amounts.accruedInterest(), amounts.fee(),
+                today, prepaymentPricer.feeFreeFrom(loan));
     }
 
     /** 연체 회차에는 지금까지 쌓인 연체이자를 같이 내려 준다 — 화면의 상환 금액이 실제 출금액과 같아야 한다 */

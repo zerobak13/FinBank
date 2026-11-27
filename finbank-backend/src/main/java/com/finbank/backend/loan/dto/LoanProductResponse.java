@@ -13,6 +13,7 @@ public record LoanProductResponse(
         RepaymentType repaymentType,
         BigDecimal interestRate,
         BigDecimal overdueExtraRate,
+        BigDecimal prepaymentFeeRate,
         BigDecimal minAmount,
         BigDecimal maxAmount,
         int maxTermMonths
@@ -20,7 +21,7 @@ public record LoanProductResponse(
     public static LoanProductResponse from(LoanProduct p) {
         return new LoanProductResponse(
                 p.getId(), p.getName(), p.getRepaymentType(),
-                p.getInterestRate(), p.getOverdueExtraRate(),
+                p.getInterestRate(), p.getOverdueExtraRate(), p.getPrepaymentFeeRate(),
                 MoneyPolicy.toWon(p.getMinAmount()), MoneyPolicy.toWon(p.getMaxAmount()),
                 p.getMaxTermMonths()
         );

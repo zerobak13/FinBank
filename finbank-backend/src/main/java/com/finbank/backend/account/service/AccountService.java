@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
  * {@code @Transactional} 범위 안에서 비관적 락(PESSIMISTIC_WRITE)으로 보호되고,
  * 락 조회를 각 계좌의 "첫 조회"로 수행해 1차 캐시로 인한 stale read를 방지한다.</p>
  *
- * <p><b>돈이 움직이는 메서드(입금·출금·이체)는 패키지 밖에 공개하지 않는다.</b> 공개 진입점은 멱등 처리를 감싼
+ * <p><b>돈이 움직이는 메서드(개설·입금·출금·이체)는 패키지 밖에 공개하지 않는다.</b> 공개 진입점은 멱등 처리를 감싼
  * {@link AccountMoneyService} 하나다. (스프링 6부터 클래스 기반 프록시는 package-private 메서드에도 트랜잭션을 건다)</p>
  */
 @Service
@@ -58,8 +58,13 @@ public class AccountService {
         this.idempotentExecutor = idempotentExecutor;
     }
 
+    /**
+     * 계좌 개설의 트랜잭션 본체 — {@link AccountMoneyService#open}이 멱등키를 선점한 뒤 호출한다.
+     * 초기 입금이 있으면 돈이 생기는 요청이라 입금·이체처럼 응답 확정({@code complete})도 같은 트랜잭션에서 한다
+     * (재시도가 계좌를 하나 더 만들거나 초기 입금을 한 번 더 하지 않는다).
+     */
     @Transactional
-    public AccountSummaryResponse createAccount(AccountCreateRequest request) {
+    AccountSummaryResponse createAccount(AccountCreateRequest request, String idempotencyKey) {
         Member member = currentMemberProvider.current();
 
         String accountNumber = generateAccountNumber();
@@ -75,7 +80,7 @@ public class AccountService {
             transactionLogRepository.save(log);
         }
 
-        return toSummary(saved);
+        return complete(idempotencyKey, toSummary(saved));
     }
     @Transactional(readOnly = true)
     public List<AccountSummaryResponse> getMyAccounts() {

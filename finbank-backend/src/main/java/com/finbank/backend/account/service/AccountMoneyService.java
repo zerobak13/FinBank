@@ -1,5 +1,7 @@
 package com.finbank.backend.account.service;
 
+import com.finbank.backend.account.dto.AccountCreateRequest;
+import com.finbank.backend.account.dto.AccountSummaryResponse;
 import com.finbank.backend.account.dto.CashResponse;
 import com.finbank.backend.account.dto.TransferRequest;
 import com.finbank.backend.account.dto.TransferResponse;
@@ -11,7 +13,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 
 /**
- * 계좌에서 돈이 움직이는 요청(입금·출금·이체)의 진입점 — 멱등 처리를 감싸고 실제 처리는 {@link AccountService}에 위임한다.
+ * 계좌에서 돈이 움직이는 요청(개설·입금·출금·이체)의 진입점 — 멱등 처리를 감싸고 실제 처리는 {@link AccountService}에 위임한다.
  *
  * <p>대출 실행·상환({@code LoanExecutionService}·{@code LoanRepaymentService})과 같은 구조다. 이 클래스에는 트랜잭션이 없다(의도적):
  * 키 선점/해제는 각자 별도 트랜잭션이고, 본체는 자기 트랜잭션 안에서 응답을 확정한다.
@@ -24,6 +26,7 @@ import java.math.BigDecimal;
 @Service
 public class AccountMoneyService {
 
+    private static final String OPEN = "account-open";
     private static final String DEPOSIT = "account-deposit";
     private static final String WITHDRAW = "account-withdraw";
     private static final String TRANSFER = "account-transfer";
@@ -38,6 +41,14 @@ public class AccountMoneyService {
         this.accountService = accountService;
         this.idempotentExecutor = idempotentExecutor;
         this.currentMember = currentMember;
+    }
+
+    /** 계좌 개설 — 초기 입금이 있으면 돈이 생기므로 입금과 같은 멱등 처리. 재시도에는 처음 만든 계좌를 그대로 돌려준다 */
+    public AccountSummaryResponse open(AccountCreateRequest request, String idempotencyKey) {
+        Long memberId = currentMember.currentId();
+        String hash = RequestHash.of(OPEN, memberId, normalize(request.getInitialDeposit()));
+        return idempotentExecutor.run(idempotencyKey, memberId, hash, AccountSummaryResponse.class,
+                () -> accountService.createAccount(request, idempotencyKey));
     }
 
     public CashResponse deposit(Long accountId, BigDecimal amount, String idempotencyKey) {

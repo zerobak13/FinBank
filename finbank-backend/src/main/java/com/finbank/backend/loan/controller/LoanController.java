@@ -5,6 +5,7 @@ import com.finbank.backend.loan.dto.LoanDetailResponse;
 import com.finbank.backend.loan.dto.LoanExecutionResponse;
 import com.finbank.backend.loan.dto.LoanSearchCondition;
 import com.finbank.backend.loan.dto.LoanSummaryResponse;
+import com.finbank.backend.loan.dto.PrepaymentQuoteResponse;
 import com.finbank.backend.loan.dto.RepaymentRequest;
 import com.finbank.backend.loan.dto.RepaymentResponse;
 import com.finbank.backend.loan.dto.RepaymentScheduleResponse;
@@ -83,7 +84,9 @@ public class LoanController {
     }
 
     @Operation(summary = "전액 중도상환 (잔여원금 + 경과이자 + 중도상환수수료)",
-            description = "남은 회차는 삭제하지 않고 CANCELED로 보존합니다. 정상(ACTIVE) 대출만 가능합니다.")
+            description = "남은 회차는 삭제하지 않고 CANCELED로 보존합니다. 정상(ACTIVE) 대출만 가능합니다. "
+                    + "중도상환수수료는 대출일부터 3년 안에 갚을 때만 붙습니다(금소법). "
+                    + "금액은 먼저 GET /api/loans/{loanId}/prepayment-quote로 확인하세요.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "중도상환 완료"),
             @ApiResponse(responseCode = "400", description = "계좌 잔액 부족"),
@@ -93,6 +96,20 @@ public class LoanController {
     public RepaymentResponse prepay(@PathVariable Long loanId,
                                     @RequestHeader(IDEMPOTENCY_KEY) String idempotencyKey) {
         return loanRepaymentService.prepayAll(loanId, idempotencyKey);
+    }
+
+    @Operation(summary = "전액 중도상환 견적 (돈은 움직이지 않음)",
+            description = "지금 전액 중도상환하면 출금될 잔여원금·경과이자·중도상환수수료와 총액, 수수료가 없어지는 날을 돌려줍니다. "
+                    + "같은 날 실제 중도상환과 같은 계산입니다(그 사이 다른 상환이 끝나면 달라집니다).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "견적"),
+            @ApiResponse(responseCode = "403", description = "본인 대출이 아닌 경우"),
+            @ApiResponse(responseCode = "404", description = "없는 대출"),
+            @ApiResponse(responseCode = "409", description = "완납/연체 상태 (중도상환 불가)")
+    })
+    @GetMapping("/{loanId}/prepayment-quote")
+    public PrepaymentQuoteResponse quotePrepayment(@PathVariable Long loanId) {
+        return loanQueryService.quotePrepayment(loanId);
     }
 
     @Operation(summary = "내 대출 목록")
