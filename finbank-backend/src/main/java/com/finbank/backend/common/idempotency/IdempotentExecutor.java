@@ -7,7 +7,6 @@ import com.finbank.backend.exception.ErrorCode;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
-import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -25,6 +24,9 @@ import java.util.function.Supplier;
  *                     ├─ 성공 → 커밋 (돈의 이동 + COMPLETED가 한 커밋)
  *                     └─ 실패 → 롤백 후 release(REQUIRES_NEW)로 키 삭제 = 재시도 허용
  * </pre>
+ *
+ * <p>선점한 채 프로세스가 죽어 IN_PROGRESS로 남은 키는 일정 시간이 지나면 같은 내용의 재시도가 넘겨받는다
+ * ({@link IdempotencyStore} 참고). 정확히 한 번은 확정 단계의 조건부 UPDATE가 지킨다.</p>
  */
 @Component
 public class IdempotentExecutor {
@@ -49,22 +51,24 @@ public class IdempotentExecutor {
 
         validateKey(idemKey);
 
-        Optional<String> replay;
+        IdempotencyStore.Claim claim;
         try {
-            replay = store.claim(idemKey, memberId, requestHash);
+            claim = store.claim(idemKey, memberId, requestHash);
         } catch (DataIntegrityViolationException e) {
             // UNIQUE 충돌 = 동시 요청이 먼저 선점. 새 트랜잭션에서 승자의 상태를 다시 읽는다.
             return deserialize(store.findCompletedResponse(idemKey, requestHash), responseType);
         }
 
-        if (replay.isPresent()) {
-            return deserialize(replay.get(), responseType);
+        if (claim.isReplay()) {
+            return deserialize(claim.replay(), responseType);
         }
 
         try {
             return action.get();
         } catch (RuntimeException e) {
-            store.release(idemKey); // 실패한 요청은 같은 키로 재시도할 수 있어야 한다
+            // 실패한 요청은 같은 키로 재시도할 수 있어야 한다. 내 선점 행만 지운다 —
+            // 내 선점이 오래돼 다른 재시도가 넘겨받았다면 그 선점은 건드리지 않는다
+            store.release(claim.recordId());
             throw e;
         }
     }

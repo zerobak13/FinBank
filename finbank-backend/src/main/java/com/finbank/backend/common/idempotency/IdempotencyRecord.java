@@ -61,15 +61,8 @@ public class IdempotencyRecord {
         return record;
     }
 
-    /**
-     * 처리 완료 확정. 본 처리와 <b>같은 트랜잭션</b>에서 호출되므로,
-     * 본 처리가 롤백되면 이 확정도 함께 사라진다(= 재시도 가능한 상태로 남는다).
-     */
-    public void complete(String responseBody) {
-        this.status = IdempotencyStatus.COMPLETED;
-        this.responseBody = responseBody;
-        this.completedAt = LocalDateTime.now();
-    }
+    // 확정(IN_PROGRESS → COMPLETED)은 도메인 메서드가 없다 — IdempotencyRecordRepository.completeIfInProgress
+    // 조건부 UPDATE로만 한다. 읽어 둔 엔티티는 스냅샷이라, 같은 키를 다른 본 처리가 이미 확정했어도 IN_PROGRESS로 보인다.
 
     public boolean isCompleted() {
         return this.status == IdempotencyStatus.COMPLETED;
