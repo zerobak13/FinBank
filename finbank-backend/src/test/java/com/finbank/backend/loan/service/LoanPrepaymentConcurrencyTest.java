@@ -2,6 +2,8 @@ package com.finbank.backend.loan.service;
 
 import com.finbank.backend.account.domain.Account;
 import com.finbank.backend.account.repository.AccountRepository;
+import com.finbank.backend.common.idempotency.IdempotencyStore;
+import com.finbank.backend.common.idempotency.RequestHash;
 import com.finbank.backend.loan.domain.LoanAccount;
 import com.finbank.backend.loan.domain.LoanApplication;
 import com.finbank.backend.loan.domain.LoanProduct;
@@ -46,6 +48,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <p>중도상환은 첫 조회(소유자 확인)에서 스냅샷이 잡힌 뒤 계좌 락을 기다린다. 그 사이 1회차 상환이 커밋되면,
  * "마지막 납부 회차"를 일반 조회로 읽을 때 스냅샷이라 그 상환을 못 보고 기산일을 실행일로 잡아 이자를 더 받는다.
  * 잠금 조회는 최신 커밋본을 읽는다.</p>
+ *
+ * <p>1회차 상환은 서비스가 아니라 처리기를 이 테스트의 트랜잭션 안에서 직접 부른다(키는 미리 선점).
+ * 멱등 실행기는 트랜잭션 밖에서 부르는 것이 계약이다 — 바깥 트랜잭션 안에서 부르면 회원 조회가 그 트랜잭션의
+ * 스냅샷을 선점(별도 트랜잭션)보다 먼저 잡아서, 본 처리가 방금 선점한 키를 못 본다("선점되지 않은 멱등키").</p>
  */
 @SpringBootTest
 class LoanPrepaymentConcurrencyTest {
@@ -57,6 +63,8 @@ class LoanPrepaymentConcurrencyTest {
     @Autowired LoanAccountRepository loanAccountRepository;
     @Autowired RepaymentScheduleRepository repaymentScheduleRepository;
     @Autowired LoanRepaymentService loanRepaymentService;
+    @Autowired LoanRepaymentProcessor loanRepaymentProcessor;
+    @Autowired IdempotencyStore idempotencyStore;
     @Autowired PlatformTransactionManager transactionManager;
     @Autowired DatabaseCleaner cleaner;
 
@@ -66,12 +74,14 @@ class LoanPrepaymentConcurrencyTest {
     private static final BigDecimal INSTALLMENT_PRINCIPAL = new BigDecimal("1000000");
     private static final BigDecimal INSTALLMENT_INTEREST = new BigDecimal("50000");
 
+    private Long memberId;
     private LoanAccount loan;
 
     @BeforeEach
     void setUp() {
         cleaner.clean();
         Member member = memberRepository.saveAndFlush(new Member(EMAIL, "중도상환테스터", "password"));
+        memberId = member.getId();
         Account account = accountRepository.saveAndFlush(
                 new Account(member, TestAccountNumbers.next(), new BigDecimal("30000000")));
         LoanProduct product = loanProductRepository.findByStatus(ProductStatus.ON_SALE).get(0);
@@ -99,9 +109,13 @@ class LoanPrepaymentConcurrencyTest {
         TransactionTemplate tx = new TransactionTemplate(transactionManager);
         ExecutorService prepayer = Executors.newSingleThreadExecutor();
         try {
+            // 1회차 상환의 멱등키는 실제 흐름처럼 먼저 선점해 커밋해 둔다 (별도 트랜잭션)
+            String repayKey = UUID.randomUUID().toString();
+            idempotencyStore.claim(repayKey, memberId, RequestHash.of("loan-repay", memberId, loan.getId(), 1));
+
             Future<RepaymentResponse> prepayment = tx.execute(status -> {
-                // 1회차 상환 — 이 트랜잭션에 합류해서, 커밋 전까지 계좌·대출 락을 쥐고 있다
-                loanRepaymentService.repay(loan.getId(), 1, UUID.randomUUID().toString());
+                // 1회차 상환 본체 — 이 트랜잭션에서 돌아서, 커밋 전까지 계좌·대출 락을 쥐고 있다
+                loanRepaymentProcessor.repay(loan.getId(), memberId, 1, repayKey);
 
                 // 이 순간 중도상환이 들어온다 — 소유자 확인(첫 조회)에서 스냅샷이 잡히고 계좌 락을 기다린다
                 Future<RepaymentResponse> started = prepayer.submit(this::prepayAsMember);
