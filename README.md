@@ -16,7 +16,7 @@
 | 이자 계산 | 순수 자바 엔진을 네 겹으로 검증 | 외부 계산기와 월 상환금 일치 · 무작위 2만 건에서 숨은 버그를 찾아 차단 |
 | 대출 검색 | QueryDSL 동적 조건 + 복합 인덱스 | 10만 건에서 조사 행 37배 감소 · 응답 24배 단축 |
 | 연체 배치 | 커서 Reader · 멱등 3겹 · 청크 크기 실측 | 5만 건, 청크 100 → 1000에서 3.8배 |
-| 테스트 | 실제 MySQL 컨테이너에서 CI | 테스트 563개를 커밋마다 |
+| 테스트 | 실제 MySQL 컨테이너에서 CI | 테스트 572개를 커밋마다 |
 | AI 하네스 | 구현·검증 에이전트 분리 + 강제 장치 3겹 | 판정 기준 수정 시도 차단 · 입력 계약 누락 4건 발견 |
 
 각 주제의 설계 과정·코드·숫자는 [전체 가이드](docs/FinBank_전체가이드.md)([PDF](docs/FinBank_전체가이드.pdf))에 장별로 정리했습니다.
@@ -42,12 +42,12 @@ docker compose up            # 백엔드 :8080, MySQL :3306
 ```bash
 # 직접 실행할 때 (MySQL 필요)
 cd finbank-backend
-./gradlew test        # 테스트 563개 — finbank_test 스키마
+./gradlew test        # 테스트 572개 — finbank_test 스키마
 ./gradlew perfTest    # 성능 측정 (인덱스 10만 건 / 배치 5만 건) — 수동 실행
 ./gradlew bootRun     # 개발 서버 — finbank 스키마
 
 cd finbank-frontend && npm install && npm run dev   # 화면 :5173
-npm test                                            # 화면 테스트 20개 (Node 내장 테스트)
+npm test                                            # 화면 테스트 25개 (Node 내장 테스트)
 ```
 
 개발용(`finbank`)과 테스트용(`finbank_test`) 스키마를 나눴습니다. 테스트가 매번 전 테이블을 비우기 때문에, 같은 스키마를 쓰면 테스트 한 번에 개발 데이터가 사라집니다. DB 접속 정보와 JWT 시크릿은 로컬에서는 gitignore된 `application-local.yml`이, Docker·CI에서는 환경변수가 채웁니다.
@@ -59,8 +59,8 @@ npm test                                            # 화면 테스트 20개 (No
 | 영역 | 기능 |
 |---|---|
 | 회원·인증 | 회원가입·로그인(Stateless JWT), Refresh Token 재발급(쓸 때마다 새 토큰으로 교체 — 화면은 만료되면 한 번만 재발급하고 같은 요청을 다시 보냄), 로그아웃 |
-| 수신 | 계좌 개설, 입금·출금·이체(멱등키), 거래 원장 조회(페이징) |
-| 여신 | 상품 조회 → 신청(즉시 자동심사: 한도·연체 2룰) → 실행(상환 스케줄 확정 + 연결계좌 입금) → 회차 상환 · 전액 중도상환(잔여원금 + 경과이자 + 체감식 수수료) |
+| 수신 | 계좌 개설·입금·출금·이체(모두 멱등키), 거래 원장 조회(페이징 — 대출 실행금·상환금은 어느 대출 몇 회차인지 표시) |
+| 여신 | 상품 조회 → 신청(즉시 자동심사: 한도·연체 2룰) → 실행(상환 스케줄 확정 + 연결계좌 입금) → 회차 상환 · 전액 중도상환(견적 조회 후 잔여원금 + 경과이자 + 수수료 — 수수료는 대출일부터 3년 안에 갚을 때만, 금소법) |
 | 연체 | 매일 02:00 배치 — 납기 지난 회차를 연체로 전환 → 연체이자 일할 가산 → 연체 회차를 갚을 때 연체이자까지 수납 |
 | 조회 | 대출 검색(조건 7개 조합 · 페이징), 회차별 스케줄(연체 회차는 쌓인 연체이자까지), 신청 이력 |
 | 화면 | React — 계좌·이체, 대출 신청·실행·상환 |
@@ -135,11 +135,11 @@ Flyway V1~V8 기준 11개 표입니다 — 수신·인증 4개(파랑), 여신 6
 | 신청 취소와 실행이 같은 순간 | `UPDATE ... WHERE status IN ('APPLIED', 'APPROVED')` — 먼저 바꾼 쪽만 1행 | 진 쪽은 409와 현재 상태 |
 | 새벽 배치와 상환이 같은 회차·이력을 | 배치도 조건부 UPDATE (`status = 'PENDING'`, `resolved_at IS NULL`) | 같은 락 순서 |
 
-**조건부 UPDATE가 핵심인 이유**: MySQL 기본 격리수준(REPEATABLE READ)에서 일반 SELECT는 트랜잭션 시작 시점의 스냅샷을 읽습니다. 락을 기다렸다 들어온 두 번째 요청이 이미 상환된 회차를 "아직 PENDING"으로 볼 수 있다는 뜻입니다. UPDATE는 항상 최신 커밋본으로 조건을 평가하므로 영향 행 0으로 정확히 막힙니다. 엔티티를 읽어 고치는 방식은 또 하나의 함정이 있습니다 — 변경 감지가 **행 전체**를 읽었던 값으로 다시 써서, 그 사이 다른 쪽이 바꾼 값(방금 상환된 회차, 닫힌 연체 이력)까지 되돌립니다. 그래서 경쟁이 있는 상태 전이(신청 실행·취소, 회차 상환, 배치의 연체 전환·연체이자 가산)는 도메인 메서드를 두지 않고 이 UPDATE로만 바꾸며, 테스트 데이터도 같은 UPDATE로 만듭니다.
+**조건부 UPDATE가 핵심인 이유**: MySQL 기본 격리수준(REPEATABLE READ)에서 일반 SELECT는 트랜잭션 시작 시점의 스냅샷을 읽습니다. 락을 기다렸다 들어온 두 번째 요청이 이미 상환된 회차를 "아직 PENDING"으로 볼 수 있다는 뜻입니다. UPDATE는 항상 최신 커밋본으로 조건을 평가하므로 영향 행 0으로 정확히 막힙니다. 같은 이유로 락을 기다린 뒤에 읽는 값(다음 상환 회차, 연체 이력, 중도상환의 마지막 납부 회차)은 잠금 조회로 읽습니다 — 다음 회차를 일반 조회로 고르면 1·2회차 상환이 겹칠 때 2회차가 "다음은 1회차입니다"로 거절됩니다(`LoanConsecutiveRepaymentConcurrencyTest`). 엔티티를 읽어 고치는 방식은 또 하나의 함정이 있습니다 — 변경 감지가 **행 전체**를 읽었던 값으로 다시 써서, 그 사이 다른 쪽이 바꾼 값(방금 상환된 회차, 닫힌 연체 이력)까지 되돌립니다. 그래서 경쟁이 있는 상태 전이(신청 실행·취소, 회차 상환, 배치의 연체 전환·연체이자 가산)는 도메인 메서드를 두지 않고 이 UPDATE로만 바꾸며, 테스트 데이터도 같은 UPDATE로 만듭니다.
 
 ### 3. 멱등키 — 두 번 눌러도 한 번만 나가게
 
-돈이 움직이는 API(대출 실행·회차 상환·전액 중도상환·이체)는 `Idempotency-Key` 헤더가 필수입니다. 같은 키의 두 번째 요청에는 저장해 둔 응답을 그대로 돌려줍니다(토스·Stripe 등 금융 API의 표준 패턴). 핵심은 트랜잭션 경계입니다.
+돈이 움직이는 API(계좌 개설·입금·출금·이체·대출 실행·회차 상환·전액 중도상환)는 `Idempotency-Key` 헤더가 필수입니다. 같은 키의 두 번째 요청에는 저장해 둔 응답을 그대로 돌려줍니다(토스·Stripe 등 금융 API의 표준 패턴). 핵심은 트랜잭션 경계입니다.
 
 | 단계 | 전파 속성 | 이유 |
 |---|---|---|
@@ -157,6 +157,8 @@ Flyway V1~V8 기준 11개 표입니다 — 수신·인증 4개(파랑), 여신 6
 | 같은 멱등키 100번 재시도 | 70 (처리 1 + 재생 69) | 30 | **1건** | **1회** |
 
 두 번째 줄이 멱등키가 있는 이유입니다 — 70개가 성공 응답을 받았지만 돈은 한 번만 움직였습니다(`LoanRepaymentConcurrencyTest`).
+
+화면도 키를 같은 원칙으로 씁니다 — **같은 행동에는 서버가 결과를 확정해 줄 때까지 같은 키**(`createKeyRing`). 누를 때마다 새 키를 만들면, 응답을 못 받은 사용자가 다시 누르는 바로 그 순간 첫 요청이 사실 처리됐더라도 서버는 새 요청으로 보고 돈을 한 번 더 옮깁니다. 네트워크 실패·5xx·"처리 중"(409)이면 키를 남기고, 성공이나 거절(4xx)이면 버립니다.
 
 ### 4. 돈 계산 — 하나의 정책, 네 겹의 검증
 
@@ -219,19 +221,19 @@ Flyway V1~V8 기준 11개 표입니다 — 수신·인증 4개(파랑), 여신 6
 
 ## 테스트와 CI
 
-테스트 **563개**가 push·PR마다 GitHub Actions에서 돕니다(성능 측정 2개는 `perf` 태그로 분리 — CI 시간이 곧 개발 피드백 속도입니다). 통합 테스트는 **실제 MySQL 8 컨테이너**에서 돕니다. 비관적 락, 조건부 UPDATE, REPEATABLE READ 스냅샷처럼 이 프로젝트가 증명하려는 동작은 DB 엔진의 특성이라, H2로 바꾸면 검증 자체가 무의미해지기 때문입니다.
+테스트 **572개**가 push·PR마다 GitHub Actions에서 돕니다(성능 측정 2개는 `perf` 태그로 분리 — CI 시간이 곧 개발 피드백 속도입니다). 통합 테스트는 **실제 MySQL 8 컨테이너**에서 돕니다. 비관적 락, 조건부 UPDATE, REPEATABLE READ 스냅샷처럼 이 프로젝트가 증명하려는 동작은 DB 엔진의 특성이라, H2로 바꾸면 검증 자체가 무의미해지기 때문입니다.
 
 | 묶음 | 개수 | 대표 테스트 |
 |---|---:|---|
-| 수신 (동시성·규칙·멱등) | 25 | `WithdrawConcurrencyTest`, `AccountServiceDeadlockTest`, `TransferIdempotencyTest`, `CashIdempotencyTest` |
+| 수신 (동시성·규칙·멱등) | 27 | `WithdrawConcurrencyTest`, `AccountServiceDeadlockTest`, `TransferIdempotencyTest`, `CashIdempotencyTest`, `AccountOpenIdempotencyTest` |
 | 인증 (가입·재발급·로그아웃) | 5 | `AuthServiceTest` |
 | 공통 (예외·페이지) | 8 | `GlobalExceptionHandlerTest`, `PagingPolicyTest` |
 | 여신 계산 엔진 | 270 | `ScheduleGeneratorTest`, `ScheduleGeneratorPropertyTest`(240조합) |
 | 불변식 하네스 | 190 | `CalculatorInvariantsTest`(143조합), `ScheduleCaseFileTest`(사람 10건 + AI 32건) |
-| 여신 통합 (실제 DB) | 49 | `LoanExecutionServiceTest`, `LoanRepaymentServiceTest`, `LoanRepaymentConcurrencyTest`, `LoanPrepaymentConcurrencyTest` |
+| 여신 통합 (실제 DB) | 56 | `LoanExecutionServiceTest`, `LoanRepaymentServiceTest`, `LoanRepaymentConcurrencyTest`, `LoanPrepaymentConcurrencyTest`, `PrepaymentFeeRuleTest` |
 | 배치 | 16 | `OverdueDetectionJobTest`(250건 청크 경계, 상환과 겹치는 순간), `OverdueInterestAccrualJobTest` |
 
-화면 테스트 20개(`npm test` — 토큰 재발급·금액 규칙)도 CI의 프론트 job에서 빌드와 함께 돕니다.
+화면 테스트 25개(`npm test` — 토큰 재발급·금액 규칙·멱등키 재사용)도 CI의 프론트 job에서 빌드와 함께 돕니다.
 
 PR이 판정 기준 파일(불변식·하네스·CI 설정)을 바꾸면 `oracle-approved` 라벨 없이는 통과하지 않는 **Harness Guard**도 함께 돕니다. 가드는 PR에 담긴 코드가 아니라 기준 브랜치의 코드로 돌아서, 같은 PR이 규칙을 고쳐 스스로를 통과시킬 수 없습니다.
 
