@@ -105,10 +105,10 @@ public class LoanExecutionProcessor {
         List<RepaymentSchedule> schedules = generateSchedules(loan, application.getTermMonths(), executedAt);
         repaymentScheduleRepository.saveAll(schedules);
 
-        // ④ 연결계좌 입금 (기존 계좌 도메인 재사용)
+        // ④ 연결계좌 입금 (기존 계좌 도메인 재사용) — 거래 내역에 어느 대출의 실행금인지 남긴다 (일반 입금과 구분)
         linkedAccount.deposit(loan.getPrincipal());
-        transactionLogRepository.save(
-                TransactionLog.deposit(linkedAccount, loan.getPrincipal(), linkedAccount.getBalance()));
+        transactionLogRepository.save(TransactionLog.deposit(linkedAccount, loan.getPrincipal(),
+                linkedAccount.getBalance(), "대출 실행 · 대출 #" + loan.getId()));
 
         // ⑤ 대출 원장 기록 (append-only)
         loanTransactionRepository.save(LoanTransaction.execution(loan, idempotencyKey));

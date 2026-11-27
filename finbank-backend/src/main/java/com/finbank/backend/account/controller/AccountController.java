@@ -19,7 +19,7 @@ import java.util.List;
 
 /**
  * 계좌 API 컨트롤러. 계좌 생성/조회와 입금·출금·이체 엔드포인트를 제공한다.
- * 모든 요청에 JWT 인증이 필요하고, 돈이 움직이는 요청(입금·출금·이체)은 Idempotency-Key 헤더가 필수다.
+ * 모든 요청에 JWT 인증이 필요하고, 돈이 움직이는 요청(개설·입금·출금·이체)은 Idempotency-Key 헤더가 필수다.
  */
 @RestController
 @RequestMapping("/api/accounts")
@@ -37,18 +37,27 @@ public class AccountController {
         this.accountMoneyService = accountMoneyService;
     }
 
-    @Operation(summary = "계좌 생성", description = "새 계좌를 개설합니다. 초기 입금액(initialDeposit)을 0 이상으로 설정할 수 있습니다.")
+    @Operation(summary = "계좌 생성", description = """
+            새 계좌를 개설합니다. 초기 입금액(initialDeposit)을 0 이상으로 설정할 수 있습니다.
+
+            **멱등성**: `Idempotency-Key` 헤더가 필수입니다(초기 입금은 돈이 생기는 요청). 재시도에 같은 키를 보내면
+            계좌를 하나 더 만들지 않고 처음 만든 계좌를 돌려줍니다.
+            """)
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "계좌 생성 성공 (Location 헤더에 생성된 계좌 URI 포함)"),
-            @ApiResponse(responseCode = "401", description = "인증 토큰 없음 또는 만료")
+            @ApiResponse(responseCode = "400", description = "초기 입금액이 음수·소수·15자리 초과, Idempotency-Key 없음"),
+            @ApiResponse(responseCode = "401", description = "인증 토큰 없음 또는 만료"),
+            @ApiResponse(responseCode = "409", description = "같은 키의 요청이 처리 중"),
+            @ApiResponse(responseCode = "422", description = "같은 키로 다른 내용의 요청")
     })
     @PostMapping
     public ResponseEntity<AccountSummaryResponse> createAccount(
-            @Valid @RequestBody AccountCreateRequest request) {
-        AccountSummaryResponse created = accountService.createAccount(request);
+            @Valid @RequestBody AccountCreateRequest request,
+            @RequestHeader(IDEMPOTENCY_KEY) String idempotencyKey) {
+        AccountSummaryResponse created = accountMoneyService.open(request, idempotencyKey);
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{id}")
-                .buildAndExpand(created.getId())
+                .buildAndExpand(created.id())
                 .toUri();
         return ResponseEntity.created(location).body(created);
     }

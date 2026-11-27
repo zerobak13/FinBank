@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Layout from "./components/Layout";
 import AccountList from "./components/AccountList";
 import AccountDetail from "./components/AccountDetail";
@@ -7,7 +7,7 @@ import { useAuth } from "./hooks/useAuth";
 import { useAccount } from "./hooks/useAccount";
 import { authApi } from "./api/authApi";
 import { accountApi } from "./api/accountApi";
-import { newIdempotencyKey } from "./api/idempotency";
+import { createKeyRing } from "./api/idempotency";
 import { SESSION_EXPIRED_EVENT, readAuth } from "./api/client";
 import { parseWon } from "./utils/formatter";
 import LoanPage from "./pages/LoanPage";
@@ -21,7 +21,10 @@ export default function App() {
   const notify = (m, type = "info") => { setMsg(m); setMsgType(type); };
 
   const { auth, saveAuth } = useAuth();
+  // 돈이 움직이는 행동별 멱등키 — 응답을 못 받고 다시 눌러도 같은 키가 나간다 (api/idempotency.js)
+  const keys = useRef(createKeyRing()).current;
   const clearSession = (message, type = "info") => {
+    keys.clear();
     saveAuth(null);
     setAccounts([]);
     setSelected(null);
@@ -90,16 +93,18 @@ export default function App() {
     } catch (e) { notify(e.message, "error"); } finally { setLoading(false); }
   };
 
-  // 입금·출금·이체는 성공하면 true — 실패하면 입력값을 지우지 않아 고쳐서 다시 보낼 수 있다
+  // 입금·출금·이체는 성공하면 true — 실패하면 입력값을 지우지 않아 고쳐서 다시 보낼 수 있다.
+  // 다시 보낼 때도 결과가 확정되기 전이면 같은 멱등키가 나가서, 첫 요청이 사실 처리됐어도 돈은 한 번만 움직인다
   const deposit = async (val) => {
     if (!selected) return false;
     const amount = parseWon(val);
     if (amount === null) { notify(AMOUNT_RULE, "error"); return false; }
+    const id = selected.account.id;
     try {
       setLoading(true);
-      await accountApi.deposit(selected.account.id, amount, newIdempotencyKey()); // 버튼 1회 = 키 1개
+      await keys.run(`deposit:${id}`, (key) => accountApi.deposit(id, amount, key));
       notify("입금 완료", "success");
-      await refreshAfterTransaction(selected.account.id);
+      await refreshAfterTransaction(id);
       return true;
     } catch (e) { notify(e.message, "error"); return false; } finally { setLoading(false); }
   };
@@ -108,11 +113,12 @@ export default function App() {
     if (!selected) return false;
     const amount = parseWon(val);
     if (amount === null) { notify(AMOUNT_RULE, "error"); return false; }
+    const id = selected.account.id;
     try {
       setLoading(true);
-      await accountApi.withdraw(selected.account.id, amount, newIdempotencyKey());
+      await keys.run(`withdraw:${id}`, (key) => accountApi.withdraw(id, amount, key));
       notify("출금 완료", "success");
-      await refreshAfterTransaction(selected.account.id);
+      await refreshAfterTransaction(id);
       return true;
     } catch (e) { notify(e.message, "error"); return false; } finally { setLoading(false); }
   };
@@ -121,12 +127,13 @@ export default function App() {
     if (!selected) return false;
     const amount = parseWon(amt);
     if (amount === null) { notify(AMOUNT_RULE, "error"); return false; }
+    const fromAccountId = selected.account.id;
     try {
       setLoading(true);
-      const key = newIdempotencyKey(); // 버튼 1회 = 키 1개
-      await accountApi.transfer({ fromAccountId: selected.account.id, toAccountNumber: to, amount }, key);
+      await keys.run(`transfer:${fromAccountId}`,
+          (key) => accountApi.transfer({ fromAccountId, toAccountNumber: to, amount }, key));
       notify("이체 완료", "success");
-      await refreshAfterTransaction(selected.account.id);
+      await refreshAfterTransaction(fromAccountId);
       return true;
     } catch (e) { notify(e.message, "error"); return false; } finally { setLoading(false); }
   };
@@ -137,7 +144,7 @@ export default function App() {
     if (amount === null) return notify("초기 입금액은 0원 이상, 원 단위 정수로 입력해 주세요.", "error");
     try {
       setLoading(true);
-      await accountApi.createAccount(amount);
+      await keys.run("open-account", (key) => accountApi.createAccount(amount, key));
       setInitialDeposit("");
       notify("계좌 생성 완료", "success");
       await loadAccounts();

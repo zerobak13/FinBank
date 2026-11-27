@@ -5,44 +5,18 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 
 /**
- * 계좌 요약 응답. 계좌 목록/상세 조회와 계좌 생성 결과로 반환된다.
- * 각 필드 설명은 @Schema 참고.
+ * 계좌 요약 정보.
+ *
+ * <p>레코드인 이유: 계좌 개설 응답이 멱등 저장소에 JSON으로 저장됐다가 재시도에 그대로 복원된다(다른 응답 레코드와 같다).
+ * JSON 필드 이름은 예전 클래스(getter)와 같다.</p>
  */
 @Schema(description = "계좌 요약 정보")
-public class AccountSummaryResponse {
-
-    @Schema(description = "계좌 ID", example = "1")
-    private Long id;
-
-    @Schema(description = "계좌번호 (12자리)", example = "123456789012")
-    private String accountNumber;
-
-    @Schema(description = "현재 잔액 (원)", example = "100000")
-    private BigDecimal balance;
-
-    @Schema(description = "계좌 잠금 여부", example = "false")
-    private boolean locked;
-
-    @Schema(description = "소유자 이메일", example = "user@example.com")
-    private String ownerEmail;
-
-    @Schema(description = "소유자 이름", example = "박제영")
-    private String ownerName;
-
-    public AccountSummaryResponse(Long id, String accountNumber, BigDecimal balance,
-                                  boolean locked, String ownerEmail, String ownerName) {
-        this.id = id;
-        this.accountNumber = accountNumber;
-        this.balance = balance;
-        this.locked = locked;
-        this.ownerEmail = ownerEmail;
-        this.ownerName = ownerName;
-    }
-
-    public Long getId() { return id; }
-    public String getAccountNumber() { return accountNumber; }
-    public BigDecimal getBalance() { return balance; }
-    public boolean isLocked() { return locked; }
-    public String getOwnerEmail() { return ownerEmail; }
-    public String getOwnerName() { return ownerName; }
+public record AccountSummaryResponse(
+        @Schema(description = "계좌 ID", example = "1") Long id,
+        @Schema(description = "계좌번호 (12자리)", example = "123456789012") String accountNumber,
+        @Schema(description = "현재 잔액 (원)", example = "100000") BigDecimal balance,
+        @Schema(description = "계좌 잠금 여부", example = "false") boolean locked,
+        @Schema(description = "소유자 이메일", example = "user@example.com") String ownerEmail,
+        @Schema(description = "소유자 이름", example = "박제영") String ownerName
+) {
 }
